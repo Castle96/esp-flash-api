@@ -1,84 +1,137 @@
-# Jarvis Assistant (ESP32 + Ollama)
+# Jarvis Assistant (ESP32 + Raspberry Pi + Ollama)
 
-Local AI voice assistant stack for fast weekend testing.
+Local AI voice assistant stack. No cloud. No GPU required (yet).
 
-## What this includes
+## Architecture
 
-- ESP32 client (`esp32/main.py`) for:
-  - I2S microphone capture (INMP441)
-  - backend chat request
-  - TTS fetch + playback via I2S amp (MAX98357A)
-- FastAPI backend (`backend/app`) for:
-  - `/transcribe` (faster-whisper)
-  - `/chat` (Ollama)
-  - `/speak` (Piper)
-  - `/health`
-- Dockerized backend with auto-restart via compose
-- Tuned Jarvis system prompt in `.env.example`
+```
+ESP32-C3 (audio edge)
+  INMP441 mic -> I2S capture
+  button press -> record PCM
+  POST /voice -> Raspberry Pi API
+  receive WAV <- Raspberry Pi API
+  MAX98357A amp -> speaker plays reply
 
-> Note: Full wake-word support requires additional tuning and host audio device access. This MVP is push-to-talk so you can test quickly this weekend.
+Raspberry Pi (Docker, port 8000)
+  POST /voice
+  1. faster-whisper large-v3 (STT, CPU int8)
+  2. httpx -> OLLAMA_HOST_IP:11434/api/chat
+  3. Kokoro-82M (TTS, ONNX CPU-native)
+  4. return WAV bytes to ESP32
 
-## Recommended wiring (ESP32-C3 breadboard test)
-
-### INMP441 -> ESP32-C3
-
-- VDD -> 3.3V
-- GND -> GND
-- SCK -> GPIO4
-- WS -> GPIO5
-- SD -> GPIO6
-- L/R -> GND (left)
-
-### MAX98357A -> ESP32-C3
-
-- VIN -> 5V (or 3.3V)
-- GND -> GND
-- BCLK -> GPIO7
-- LRC -> GPIO8
-- DIN -> GPIO10
-- Speaker -> MAX98357A outputs
-
-## Quick start (host machine)
-
-1. Install Ollama and pull model:
-
-```bash
-ollama pull gemma4:e2b
+Ollama machine (64GB RAM, 6TB)
+  gemma3:27b (CPU now)
+  llama3.3:70b (GPU later)
 ```
 
-2. Copy env file and edit values:
+## Models
 
+| Role | Model | Notes |
+|------|-------|-------|
+| LLM (now) | `gemma3:27b` | ~18GB RAM, excellent quality |
+| LLM (GPU later) | `llama3.3:70b` | ~42GB RAM, best in class |
+| STT (now) | `Systran/faster-whisper-large-v3` | int8 CPU, ~6GB RAM |
+| STT (GPU later) | same model | float16 CUDA, <1s latency |
+| TTS (now) | `hexgrad/Kokoro-82M` | ONNX CPU, `bm_george` voice |
+| TTS (GPU later) | `coqui/XTTS-v2` | voice cloning, ~250ms on CUDA |
+
+## Kokoro voice options
+
+| Voice ID | Style |
+|----------|-------|
+| `bm_george` | British male, authoritative (default) |
+| `bm_lewis` | British male, calm |
+| `am_adam` | American male, deep |
+| `am_michael` | American male, neutral |
+| `af_bella` | American female, warm |
+| `af_sarah` | American female, neutral |
+| `bf_emma` | British female, crisp |
+
+## Wiring (ESP32-C3 breadboard)
+
+### INMP441 mic
+| INMP441 | ESP32-C3 |
+|---------|----------|
+| VDD | 3.3V |
+| GND | GND |
+| SCK | GPIO4 |
+| WS | GPIO5 |
+| SD | GPIO6 |
+| L/R | GND (left channel) |
+
+### MAX98357A amp
+| MAX98357A | ESP32-C3 |
+|-----------|----------|
+| VIN | 5V |
+| GND | GND |
+| BCLK | GPIO7 |
+| LRC | GPIO8 |
+| DIN | GPIO10 |
+| OUT+/OUT- | Speaker |
+
+## Quick start
+
+### 1. Pull Ollama model
+```bash
+ollama pull gemma3:27b
+```
+
+### 2. Set up env on Pi
 ```bash
 cd jarvis/backend
 cp .env.example .env
-# set PIPER_VOICE to your .onnx voice path
+# edit .env: set OLLAMA_HOST to your big machine LAN IP
 ```
 
-3. Start backend container:
-
+### 3. Download Kokoro model files
 ```bash
-cd ../..
-docker compose -f jarvis/docker-compose.yml up --build -d
+# Run once to cache the ONNX model and voices
+python3 -c "from kokoro_onnx import Kokoro; Kokoro('kokoro-v0_19.onnx', 'voices.bin')"
 ```
 
-4. Flash/upload `jarvis/esp32/main.py` to your ESP32 MicroPython device and update:
+### 4. Start backend
+```bash
+make up
+make logs
+```
 
-- `WIFI_SSID`
-- `WIFI_PASS`
-- `BACKEND`
+### 5. Run mock tests (no hardware needed)
+```bash
+make test
+```
 
-5. Press button to record -> transcribe -> chat -> speak.
+### 6. Smoke test live backend
+```bash
+make smoke
+```
 
-## Endpoints
+### 7. Flash ESP32
+Edit `jarvis/esp32/main.py`:
+- `WIFI_SSID` / `WIFI_PASS`
+- `BACKEND = "http://YOUR_PI_IP:8000"`
 
-- `GET /health`
-- `POST /transcribe` (multipart file field: `file`)
-- `POST /chat` (`{"text":"..."}`)
-- `POST /speak` (`{"text":"..."}`)
+Flash with Thonny or `mpremote cp jarvis/esp32/main.py :main.py`.
 
-## Future improvements
+## GPU upgrade day (no code changes needed)
 
-- Add wake word (Porcupine or openwakeword)
-- Streamed audio chunks
-- Conversation memory persistence
-- Skill router / tool calls
+Edit `.env` only:
+```env
+WHISPER_DEVICE=cuda
+WHISPER_COMPUTE_TYPE=float16
+TTS_ENGINE=xtts
+XTTS_VOICE_REF=/voices/jarvis_reference.wav
+OLLAMA_MODEL=llama3.3:70b
+```
+
+Then `make up` and you're done.
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Status + model info |
+| POST | `/voice` | **Primary**: audio in -> WAV reply |
+| POST | `/transcribe` | Debug: audio -> transcript |
+| POST | `/chat` | Debug: text -> LLM reply |
+| POST | `/speak` | Debug: text -> WAV |
+| DELETE | `/history` | Clear conversation history |
