@@ -1,6 +1,6 @@
-# Jarvis Assistant (ESP32 + Raspberry Pi + Ollama)
+# Jarvis Assistant (ESP32 + Multi-Pi Inference Cluster)
 
-Local AI voice assistant. No cloud. No GPU required yet.
+Local AI voice assistant. No cloud. Works across Raspberry Pi nodes.
 
 ## Architecture
 
@@ -11,30 +11,53 @@ ESP32-C3  (audio edge)
   receive WAV  <- Pi
   MAX98357A amp -> speaker
 
-Raspberry Pi  (API gateway, port 8000)
+Raspberry Pi 4 (4GB)  (API gateway, port 8000)
   Receives audio from ESP32
-  -> POST audio   to big machine :8001  (STT)
-  -> POST text    to big machine :11434 (LLM via Ollama)
-  -> POST reply   to big machine :8002  (TTS)
+  -> POST audio   to STT node :8001  (STT)
+  -> POST text    to LLM node :11434 (Ollama)
+  -> POST reply   to TTS node :8002  (TTS)
   <- Returns WAV to ESP32
-  Zero inference load on Pi
+  Zero inference load on gateway node
 
-Big machine  (64GB RAM, 6TB, all inference)
-  :11434  Ollama        gemma3:27b
-  :8001   STT service   Systran/faster-whisper-large-v3  (int8 CPU)
+Pi 5 (8GB)  (LLM node)
+  :11434  Ollama        gemma4 (quantized variant recommended)
+
+Pi 4 (4GB)  (STT node)
+  :8001   STT service   Systran/faster-whisper-small  (int8 CPU)
+
+Pi 4 (4GB)  (TTS node)
   :8002   TTS service   hexgrad/Kokoro-82M  bm_george voice
+
+Pi 4 (4GB) spare / failover node
+  Optional hot-standby for STT or TTS, or automation workloads.
+```
+
+## Recommended role mapping (your hardware)
+
+| Node | Hardware | Role | Services |
+|------|----------|------|----------|
+| Node A | Raspberry Pi 5 (8GB) | LLM | Ollama (`gemma4`) on `:11434` |
+| Node B | Raspberry Pi 4 (4GB) | Gateway | Jarvis backend on `:8000` |
+| Node C | Raspberry Pi 4 (4GB) | STT | STT service on `:8001` |
+| Node D | Raspberry Pi 4 (4GB) | TTS / spare failover | TTS service on `:8002` |
+
+Gateway env example for this layout:
+
+```env
+OLLAMA_HOST=http://NODE_A_IP:11434
+OLLAMA_MODEL=gemma4
+STT_HOST=http://NODE_C_IP:8001
+TTS_HOST=http://NODE_D_IP:8002
 ```
 
 ## Models
 
-| Role | Model | Notes |
-|------|-------|-------|
-| LLM (now) | `gemma3:27b` | ~18GB RAM, excellent quality |
-| LLM (GPU later) | `llama3.3:70b` | ~42GB RAM, best in class |
-| STT (now) | `Systran/faster-whisper-large-v3` | int8 CPU, ~6GB RAM |
-| STT (GPU later) | same model | float16 CUDA, <1s latency |
-| TTS (now) | `hexgrad/Kokoro-82M` | ONNX CPU, `bm_george` voice |
-| TTS (GPU later) | `coqui/XTTS-v2` | voice cloning, ~250ms on CUDA |
+| Role | Model | Node recommendation |
+|------|-------|---------------------|
+| LLM | `gemma4` (quantized Ollama tag) | Pi 5 (8GB) |
+| STT | `Systran/faster-whisper-small` | Pi 4 (4GB) |
+| TTS | `hexgrad/Kokoro-82M` | Pi 4 (4GB) |
+| Optional STT upgrade | `Systran/faster-whisper-medium` | Pi 5 (8GB) if STT moved there |
 
 ## Kokoro voices
 
@@ -71,38 +94,44 @@ Big machine  (64GB RAM, 6TB, all inference)
 
 ## Quick start
 
-### 1. Big machine - pull Ollama model
+### 1. LLM node (Pi 5) - pull Ollama model
 ```bash
-ollama pull gemma3:27b
+ollama pull gemma4
 ```
 
-### 2. Big machine - start STT and TTS services
+### 2. STT node (Pi 4) - start STT service
 ```bash
 cd jarvis/services
 cp stt/.env.example stt/.env
-cp tts/.env.example tts/.env
-docker compose up --build -d
+docker compose up --build -d stt
 ```
 
-### 3. Pi - start gateway
+### 3. TTS node (Pi 4) - start TTS service
+```bash
+cd jarvis/services
+cp tts/.env.example tts/.env
+docker compose up --build -d tts
+```
+
+### 4. Gateway node (Pi 4) - start gateway
 ```bash
 cd jarvis/backend
 cp .env.example .env
-# Set BIG_MACHINE_IP in .env
+# Set OLLAMA_HOST, STT_HOST, and TTS_HOST in .env
 docker compose -f ../docker-compose.yml up --build -d
 ```
 
-### 4. Run mock tests (no hardware needed)
+### 5. Run mock tests (no hardware needed)
 ```bash
 make test
 ```
 
-### 5. Smoke test all services
+### 6. Smoke test all services
 ```bash
-BIG_MACHINE_IP=x.x.x.x make smoke
+STT_HOST=x.x.x.x TTS_HOST=x.x.x.x make smoke
 ```
 
-### 6. Flash ESP32
+### 7. Flash ESP32
 Edit `jarvis/esp32/main.py`:
 ```python
 WIFI_SSID = "your_ssid"
@@ -111,9 +140,25 @@ BACKEND   = "http://PI_LAN_IP:8000"
 ```
 Flash: `mpremote cp jarvis/esp32/main.py :main.py`
 
+## Pi topology deployment helpers
+
+Use Make targets with explicit remote hosts:
+
+```bash
+make up-stt STT_MACHINE=user@STT_PI_IP
+make up-tts TTS_MACHINE=user@TTS_PI_IP
+make up-pi
+```
+
+Or bring all service layers up in one command:
+
+```bash
+make up-all STT_MACHINE=user@STT_PI_IP TTS_MACHINE=user@TTS_PI_IP
+```
+
 ## GPU upgrade day
 
-On the big machine, edit `services/stt/.env` and `services/tts/.env`:
+On the upgraded inference node, edit `services/stt/.env` and `services/tts/.env`:
 
 ```env
 # stt/.env
@@ -132,7 +177,7 @@ Then:
 docker compose -f jarvis/services/docker-compose.yml up --build -d
 ```
 
-Pi gateway and ESP32 firmware need zero changes.
+Gateway and ESP32 firmware need zero changes.
 
 ## API reference
 
@@ -146,13 +191,13 @@ Pi gateway and ESP32 firmware need zero changes.
 | POST | `/speak` | Text -> WAV |
 | DELETE | `/history` | Clear conversation history |
 
-### STT service (port 8001, big machine)
+### STT service (port 8001, STT node)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Model + device status |
 | POST | `/transcribe` | Audio -> transcript |
 
-### TTS service (port 8002, big machine)
+### TTS service (port 8002, TTS node)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Engine + voice status |
