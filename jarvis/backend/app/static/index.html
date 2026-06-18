@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JARVIS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #070c18;
+      --surface:     #0d1626;
+      --surface2:    #111d30;
+      --border:      #1a2d4a;
+      --accent:      #00c8ff;
+      --accent-dim:  #003d56;
+      --green:       #00e676;
+      --amber:       #ffab40;
+      --red:         #ff5252;
+      --purple:      #9e9eff;
+      --text:        #cdd8e8;
+      --muted:       #3d5470;
+      --font:        'Courier New', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 48px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-hex {
+      width: 26px;
+      height: 26px;
+      border: 1.5px solid var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: bold;
+      text-shadow: 0 0 8px var(--accent);
+    }
+
+    .logo-text {
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 0.45em;
+      color: var(--accent);
+      text-shadow: 0 0 14px rgba(0,200,255,0.45);
+    }
+
+    .logo-sub {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      margin-left: 2px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 11px;
+    }
+
+    #clockDisplay {
+      color: var(--text);
+      letter-spacing: 0.08em;
+      min-width: 72px;
+      text-align: right;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 7px var(--green);
+      animation: blink 2.4s ease-in-out infinite;
+    }
+
+    .status-dot.error {
+      background: var(--red);
+      box-shadow: 0 0 7px var(--red);
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* ── Dashboard grid ──────────────────────────────────────────────────── */
+
+    .dashboard {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1.15fr 0.85fr;
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      height: 36px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 9px;
+      letter-spacing: 0.32em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .panel-tag {
+      font-size: 9px;
+      padding: 2px 7px;
+      border: 1px solid var(--accent-dim);
+      border-radius: 2px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    /* ── Agent stream ────────────────────────────────────────────────────── */
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 28px 0;
+    }
+
+    .event-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: start;
+      gap: 8px;
+      padding: 7px 9px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-dim);
+      border-radius: 2px;
+      animation: slideIn 0.25s ease-out;
+      font-size: 11px;
+    }
+
+    .event-item.ok     { border-left-color: var(--green); }
+    .event-item.warn   { border-left-color: var(--amber); }
+    .event-item.err    { border-left-color: var(--red);   }
+    .event-item.fresh  { border-left-color: var(--accent); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    .ev-badge {
+      font-size: 8px;
+      padding: 2px 5px;
+      border-radius: 2px;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    .b-audio  { background: #12254a; color: #5599ff; }
+    .b-stt    { background: #0a2535; color: #00c8ff; }
+    .b-llm    { background: #0a2518; color: #00e676; }
+    .b-tts    { background: #0d2810; color: #66bb6a; }
+    .b-err    { background: #2a0d0d; color: #ff5252; }
+    .b-timer  { background: #2a1a00; color: #ffab40; }
+    .b-sys    { background: #14143a; color: #9e9eff; }
+
+    .ev-text  { color: var(--text); word-break: break-word; line-height: 1.4; }
+    .ev-time  { font-size: 9px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+
+    /* ── Weather ─────────────────────────────────────────────────────────── */
+
+    .forecast-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .fc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px 10px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .fc-card:hover { border-color: var(--accent-dim); }
+
+    .fc-day  { font-size: 9px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+    .fc-icon { font-size: 34px; line-height: 1; }
+    .fc-desc { font-size: 10px; color: var(--muted); }
+
+    .fc-temps {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .fc-hi   { font-size: 22px; color: var(--text); }
+    .fc-lo   { font-size: 12px; color: var(--muted); }
+    .fc-pop  { font-size: 10px; color: #5599ff; }
+
+    .forecast-msg {
+      grid-column: 1/-1;
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 36px 0;
+      line-height: 1.8;
+    }
+
+    /* ── Menu panel ──────────────────────────────────────────────────────── */
+
+    .menu-section { margin-bottom: 18px; }
+
+    .menu-label {
+      font-size: 8px;
+      letter-spacing: 0.28em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    .info-table tr + tr td { border-top: 1px solid var(--border); }
+
+    .info-table td {
+      padding: 5px 8px;
+      background: var(--surface);
+    }
+
+    .info-table td:first-child { color: var(--muted); width: 46%; }
+    .info-table td:last-child  { color: var(--accent); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 0; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 7px 10px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      margin-bottom: 5px;
+    }
+
+    .btn:hover          { border-color: var(--accent); color: var(--accent); background: #001d2a; }
+    .btn.danger:hover   { border-color: var(--red);    color: var(--red);    background: #1e0808; }
+    .btn:disabled       { opacity: 0.4; cursor: not-allowed; }
+
+    .chat-box {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 11px;
+      padding: 7px 8px;
+      resize: none;
+      height: 54px;
+      margin-bottom: 5px;
+    }
+
+    .chat-box:focus    { outline: none; border-color: var(--accent); }
+
+    .chat-reply {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 2px;
+      padding: 8px;
+      font-size: 11px;
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 36px;
+      display: none;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 14px 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-hex">J</div>
+    <div>
+      <div class="logo-text">JARVIS</div>
+      <div class="logo-sub">AI ASSISTANT DASHBOARD</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="clockDisplay">--:--:--</span>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">ONLINE</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Three-panel dashboard ────────────────────────────────────────────── -->
+<div class="dashboard">
+
+  <!-- Panel 1 · Agent Activity Stream -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Agent Activity</span>
+      <span class="panel-tag" id="evtCount">0 events</span>
+    </div>
+    <div class="panel-body">
+      <div class="event-list" id="eventList">
+        <div class="placeholder" id="evtPlaceholder">Waiting for pipeline events…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 2 · 4-Day Forecast -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">4-Day Forecast</span>
+      <span class="panel-tag" id="wxZone">—</span>
+    </div>
+    <div class="panel-body">
+      <div class="forecast-grid" id="forecastGrid">
+        <div class="forecast-msg">Fetching weather…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 3 · Menu / Controls -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Controls</span>
+      <span class="panel-tag">MENU</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="menu-section">
+        <div class="menu-label">System Info</div>
+        <table class="info-table">
+          <tr><td>status</td><td id="iStatus">—</td></tr>
+          <tr><td>model</td><td id="iModel">—</td></tr>
+          <tr><td>stt</td><td id="iStt">—</td></tr>
+          <tr><td>tts</td><td id="iTts">—</td></tr>
+        </table>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label">Actions</div>
+        <button class="btn" onclick="refreshHealth()">⟳  Refresh Health</button>
+        <button class="btn danger" onclick="clearHistory()">✕  Clear Conversation</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label">Text Chat</div>
+        <textarea class="chat-box" id="chatInput" placeholder="Type a message…"></textarea>
+        <button class="btn" id="chatSendBtn" onclick="sendChat()">→  Send</button>
+        <div class="chat-reply" id="chatReply"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- .dashboard -->
+
+<script>
+// ── Clock ──────────────────────────────────────────────────────────────────
+const $clock = document.getElementById('clockDisplay');
+function tick() {
+  $clock.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+tick(); setInterval(tick, 1000);
+
+// ── Status indicator ───────────────────────────────────────────────────────
+function setStatus(ok) {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  dot.className  = ok ? 'status-dot' : 'status-dot error';
+  text.textContent = ok ? 'ONLINE' : 'ERROR';
+}
+
+// ── Health ─────────────────────────────────────────────────────────────────
+async function refreshHealth() {
+  try {
+    const r = await fetch('/health');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    document.getElementById('iStatus').textContent = d.status;
+    document.getElementById('iModel').textContent  = d.model;
+    document.getElementById('iStt').textContent    = d.whisper;
+    document.getElementById('iTts').textContent    = d.tts;
+    setStatus(true);
+  } catch { setStatus(false); }
+}
+refreshHealth(); setInterval(refreshHealth, 30_000);
+
+// ── Clear history ──────────────────────────────────────────────────────────
+async function clearHistory() {
+  await fetch('/history', { method: 'DELETE' }).catch(() => {});
+  pushEvent({ event: 'history:cleared', ts: Date.now() / 1000 });
+}
+
+// ── Text chat ──────────────────────────────────────────────────────────────
+async function sendChat() {
+  const inp  = document.getElementById('chatInput');
+  const rep  = document.getElementById('chatReply');
+  const btn  = document.getElementById('chatSendBtn');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  rep.style.display = 'block';
+  rep.textContent   = '…';
+  inp.disabled = btn.disabled = true;
+
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json();
+    rep.textContent = d.reply ?? d.detail ?? '(no response)';
+    inp.value = '';
+  } catch (e) {
+    rep.textContent = 'Error: ' + e.message;
+  } finally {
+    inp.disabled = btn.disabled = false;
+    inp.focus();
+  }
+}
+
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ── Agent event stream (SSE) ───────────────────────────────────────────────
+let evtTotal = 0;
+
+const BADGE = {
+  audio: { cls: 'b-audio', lbl: 'AUDIO' },
+  stt:   { cls: 'b-stt',   lbl: 'STT'   },
+  llm:   { cls: 'b-llm',   lbl: 'LLM'   },
+  tts:   { cls: 'b-tts',   lbl: 'TTS'   },
+  err:   { cls: 'b-err',   lbl: 'ERROR' },
+  timer: { cls: 'b-timer', lbl: 'TIMER' },
+  sys:   { cls: 'b-sys',   lbl: 'SYS'   },
+};
+
+function parseMeta(ev) {
+  if (ev.startsWith('voice:recv'))         return { badge: BADGE.audio, cls: 'fresh' };
+  if (ev.startsWith('voice:transcribed'))  return { badge: BADGE.stt,   cls: 'fresh' };
+  if (ev.startsWith('voice:llm_ok'))       return { badge: BADGE.llm,   cls: 'ok'    };
+  if (ev.startsWith('voice:tts_ok'))       return { badge: BADGE.tts,   cls: 'ok'    };
+  if (ev.includes('error'))                return { badge: BADGE.err,   cls: 'err'   };
+  if (ev.startsWith('reminder'))           return { badge: BADGE.timer, cls: 'warn'  };
+  if (ev.startsWith('history'))            return { badge: BADGE.sys,   cls: 'fresh' };
+  return { badge: BADGE.sys, cls: '' };
+}
+
+function humanize(ev) {
+  const map = {
+    'voice:recv':      'Audio received from ESP32',
+    'voice:llm_ok':    'LLM reply generated',
+    'voice:tts_ok':    'TTS synthesis complete',
+    'history:cleared': 'Conversation history cleared',
+  };
+  if (map[ev]) return map[ev];
+  if (ev.startsWith('voice:transcribed:'))   return `Transcribed — lang: ${ev.split(':')[2]}`;
+  if (ev.startsWith('voice:stt_error:'))     return `STT failed: ${ev.slice(16)}`;
+  if (ev.startsWith('voice:llm_error:'))     return `LLM failed: ${ev.slice(16)}`;
+  if (ev.startsWith('voice:tts_error:'))     return `TTS failed: ${ev.slice(16)}`;
+  if (ev.startsWith('reminder:queued:'))     return `Reminder set — "${ev.slice(16)}"`;
+  if (ev.startsWith('reminder:pending:'))    return `Reminder delivered — "${ev.slice(17)}"`;
+  return ev;
+}
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('en-US', { hour12: false });
+}
+
+function pushEvent(data) {
+  const list = document.getElementById('eventList');
+  document.getElementById('evtPlaceholder')?.remove();
+
+  const { badge, cls } = parseMeta(data.event);
+
+  const row = document.createElement('div');
+  row.className = `event-item ${cls}`;
+  row.innerHTML = `
+    <span class="ev-badge ${badge.cls}">${badge.lbl}</span>
+    <span class="ev-text">${humanize(data.event)}</span>
+    <span class="ev-time">${fmtTime(data.ts)}</span>
+  `;
+  list.prepend(row);
+
+  while (list.children.length > 60) list.lastChild.remove();
+  document.getElementById('evtCount').textContent = `${++evtTotal} events`;
+}
+
+function connectSSE() {
+  const es = new EventSource('/events');
+  es.onmessage = e => { try { pushEvent(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror   = () => { setStatus(false); es.close(); setTimeout(connectSSE, 5000); };
+}
+connectSSE();
+
+// ── Weather forecast ───────────────────────────────────────────────────────
+const WMO_MAP = {
+  0:  ['☀️',  'Clear sky'],
+  1:  ['🌤️', 'Mainly clear'],
+  2:  ['⛅',  'Partly cloudy'],
+  3:  ['☁️',  'Overcast'],
+  45: ['🌫️', 'Fog'],
+  48: ['🌫️', 'Icy fog'],
+  51: ['🌦️', 'Light drizzle'],
+  53: ['🌦️', 'Drizzle'],
+  55: ['🌧️', 'Heavy drizzle'],
+  61: ['🌧️', 'Light rain'],
+  63: ['🌧️', 'Moderate rain'],
+  65: ['🌧️', 'Heavy rain'],
+  71: ['🌨️', 'Light snow'],
+  73: ['❄️',  'Moderate snow'],
+  75: ['❄️',  'Heavy snow'],
+  80: ['🌦️', 'Showers'],
+  81: ['🌧️', 'Mod. showers'],
+  82: ['⛈️',  'Heavy showers'],
+  95: ['⛈️',  'Thunderstorm'],
+  96: ['⛈️',  'T-storm + hail'],
+  99: ['⛈️',  'Heavy T-storm'],
+};
+
+function wmoLookup(code) {
+  if (WMO_MAP[code]) return WMO_MAP[code];
+  const best = Math.max(...Object.keys(WMO_MAP).map(Number).filter(k => k <= code));
+  return WMO_MAP[best] ?? ['🌡️', 'Unknown'];
+}
+
+function dayLabel(dateStr, i) {
+  if (i === 0) return 'Today';
+  if (i === 1) return 'Tomorrow';
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+}
+
+async function loadWeather() {
+  const grid = document.getElementById('forecastGrid');
+  try {
+    const r = await fetch('/weather');
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+
+    document.getElementById('wxZone').textContent =
+      data.timezone_abbreviation ?? (data.timezone ?? '—').split('/').pop();
+
+    grid.innerHTML = '';
+    const d = data.daily;
+    for (let i = 0; i < 4; i++) {
+      const [icon, desc] = wmoLookup(d.weather_code[i]);
+      const hi  = Math.round(d.temperature_2m_max[i]);
+      const lo  = Math.round(d.temperature_2m_min[i]);
+      const pop = d.precipitation_probability_max?.[i];
+
+      const card = document.createElement('div');
+      card.className = 'fc-card';
+      card.innerHTML = `
+        <div class="fc-day">${dayLabel(d.time[i], i)}</div>
+        <div class="fc-icon">${icon}</div>
+        <div class="fc-desc">${desc}</div>
+        <div class="fc-temps">
+          <span class="fc-hi">${hi}°</span>
+          <span class="fc-lo">${lo}°</span>
+        </div>
+        ${pop != null ? `<div class="fc-pop">💧 ${pop}%</div>` : ''}
+      `;
+      grid.appendChild(card);
+    }
+  } catch {
+    grid.innerHTML = `<div class="forecast-msg">Weather unavailable.<br><small>Set WEATHER_LAT &amp; WEATHER_LON in .env</small></div>`;
+  }
+}
+loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
+</script>
+</body>
+</html>

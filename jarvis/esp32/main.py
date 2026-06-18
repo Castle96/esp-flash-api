@@ -72,6 +72,50 @@ spk = I2S(
 
 
 # ---------------------------------------------------------------------------
+# LED helpers
+#
+#   led_recording()   solid ON  – mic is active, capturing audio
+#   led_processing()  fast blink – waiting on network / backend pipeline
+#   led_speaking()    solid ON  – speaker is playing back the reply
+#   led_error()       3× rapid flashes – something went wrong
+#   led_idle()        OFF
+# ---------------------------------------------------------------------------
+
+def led_idle():
+    led.value(0)
+
+
+def led_recording():
+    led.value(1)
+
+
+def led_speaking():
+    led.value(1)
+
+
+def led_processing():
+    """Fast blink to indicate the backend is working.
+    Called in a tight loop while blocking on urequests.post().
+    Because MicroPython is single-threaded this is a one-shot blink
+    before the blocking call; repeated blinking requires async refactor."""
+    for _ in range(6):
+        led.value(1)
+        time.sleep_ms(100)
+        led.value(0)
+        time.sleep_ms(100)
+
+
+def led_error():
+    """Three rapid flashes to indicate an error state."""
+    for _ in range(3):
+        led.value(1)
+        time.sleep_ms(80)
+        led.value(0)
+        time.sleep_ms(80)
+    led.value(0)
+
+
+# ---------------------------------------------------------------------------
 # Wi-Fi
 # ---------------------------------------------------------------------------
 
@@ -97,7 +141,7 @@ def wifi_connect():
 def record_pcm(seconds=RECORD_SECONDS):
     """Record raw 16-bit 16kHz mono PCM from INMP441."""
     print("Recording...")
-    led.value(1)
+    led_recording()
     total  = seconds * RATE * 2  # bytes
     buf    = bytearray(BUF_SIZE)
     chunks = []
@@ -107,7 +151,7 @@ def record_pcm(seconds=RECORD_SECONDS):
         if n:
             chunks.append(bytes(buf[:n]))
             got += n
-    led.value(0)
+    led_idle()
     print("Recorded", got, "bytes")
     return b"".join(chunks)
 
@@ -118,7 +162,7 @@ def play_wav(wav_bytes):
     Strips the 44-byte WAV header and writes raw PCM to the I2S speaker.
     """
     print("Playing reply...")
-    led.value(1)
+    led_speaking()
     pcm = wav_bytes[44:]  # skip WAV header
     pos = 0
     chunk = BUF_SIZE
@@ -126,7 +170,7 @@ def play_wav(wav_bytes):
         end = min(pos + chunk, len(pcm))
         spk.write(pcm[pos:end])
         pos = end
-    led.value(0)
+    led_idle()
     print("Playback done")
 
 
@@ -137,9 +181,10 @@ def play_wav(wav_bytes):
 def voice_round_trip(pcm_bytes):
     """
     POST raw PCM to /voice on the Pi API.
-    Returns WAV bytes of the TTS reply.
+    Returns WAV bytes of the TTS reply, or None on error.
     """
     print("Sending to backend...")
+    led_processing()
     boundary = b"----JarvisBoundary"
     body = (
         b"--" + boundary + b"\r\n"
@@ -156,9 +201,11 @@ def voice_round_trip(pcm_bytes):
     if r.status_code != 200:
         print("Backend error:", r.status_code, r.text)
         r.close()
+        led_error()
         return None
     wav = r.content
     r.close()
+    led_idle()
     print("Received", len(wav), "bytes from backend")
     return wav
 
@@ -178,6 +225,8 @@ while True:
             wav = voice_round_trip(pcm)
             if wav:
                 play_wav(wav)
+            else:
+                led_error()
             # wait for button release
             while not btn.value():
                 time.sleep_ms(20)
