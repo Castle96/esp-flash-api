@@ -1,0 +1,12 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-dotenv>=1.0.0
+
+# Kokoro (CPU-native ONNX, default)
+# Model: hexgrad/Kokoro-82M
+kokoro-onnx>=0.4.0
+numpy>=1.26.0
+
+# XTTS v2 (GPU, voice cloning - uncomment when GPU arrives)
+# Model: coqui/XTTS-v2
+# TTS>=0.22.0

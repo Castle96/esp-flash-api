@@ -1,27 +1,10 @@
-# API
+# Jarvis Pi Gateway
+# Lightweight - no model inference runs here
+# All STT/TTS/LLM calls are forwarded to the big machine via HTTP
+
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9
 httpx>=0.27.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
-
-# Speech-to-text
-# Model: Systran/faster-whisper-large-v3
-# CPU: int8 compute type (default)
-# GPU: swap WHISPER_DEVICE=cuda, WHISPER_COMPUTE_TYPE=float16
-faster-whisper>=1.0.3
-
-# TTS — Kokoro (CPU-native ONNX, default)
-# Model: hexgrad/Kokoro-82M
-# Voices: bm_george (default), af_bella, am_adam, bf_emma, bm_lewis
-kokoro-onnx>=0.4.0
-numpy>=1.26.0
-
-# TTS — XTTS v2 (GPU, voice cloning — uncomment when GPU arrives)
-# Model: coqui/XTTS-v2
-# Requires: CUDA-capable GPU, ~6GB VRAM
-# TTS>=0.22.0
-
-# TTS — Piper (legacy fallback)
-# piper-tts>=1.2.0

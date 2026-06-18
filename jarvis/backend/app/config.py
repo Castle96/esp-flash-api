@@ -6,7 +6,7 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Ollama (remote LLM host)
 # ---------------------------------------------------------------------------
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://OLLAMA_HOST_IP:11434")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://BIG_MACHINE_IP:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:27b")
 SYSTEM_PROMPT = os.getenv(
     "SYSTEM_PROMPT",
@@ -18,26 +18,14 @@ SYSTEM_PROMPT = os.getenv(
 )
 
 # ---------------------------------------------------------------------------
-# Speech-to-text (faster-whisper)
+# Remote STT microservice (big machine port 8001)
 # ---------------------------------------------------------------------------
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "Systran/faster-whisper-large-v3")
-WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
-WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+STT_HOST = os.getenv("STT_HOST", "http://BIG_MACHINE_IP:8001")
 
 # ---------------------------------------------------------------------------
-# Text-to-speech
+# Remote TTS microservice (big machine port 8002)
 # ---------------------------------------------------------------------------
-TTS_ENGINE = os.getenv("TTS_ENGINE", "kokoro")          # kokoro | xtts | piper
-
-# Kokoro (CPU-native ONNX, default)
-KOKORO_VOICE = os.getenv("KOKORO_VOICE", "bm_george")   # British male, authoritative
-KOKORO_SPEED = float(os.getenv("KOKORO_SPEED", "1.0"))
-
-# XTTS v2 (GPU, voice cloning - swap in when GPU arrives)
-XTTS_VOICE_REF = os.getenv("XTTS_VOICE_REF", "/voices/jarvis_reference.wav")
-
-# Piper (legacy fallback)
-PIPER_VOICE = os.getenv("PIPER_VOICE", "/voices/jarvis_voice.onnx")
+TTS_HOST = os.getenv("TTS_HOST", "http://BIG_MACHINE_IP:8002")
 
 # ---------------------------------------------------------------------------
 # Server

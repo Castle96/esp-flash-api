@@ -1,42 +1,60 @@
-.PHONY: up down build logs test smoke clean
+.PHONY: up-pi down-pi up-server down-server logs-pi logs-server test smoke clean
 
-# ---- Docker ----------------------------------------------------------------
+BIG_MACHINE ?= user@BIG_MACHINE_IP
 
-up:
+# ---------------------------------------------------------------------------
+# Pi gateway (runs on Raspberry Pi)
+# ---------------------------------------------------------------------------
+
+up-pi:
 	docker compose -f jarvis/docker-compose.yml up --build -d
 
-down:
+down-pi:
 	docker compose -f jarvis/docker-compose.yml down
 
-build:
-	docker compose -f jarvis/docker-compose.yml build
-
-logs:
+logs-pi:
 	docker compose -f jarvis/docker-compose.yml logs -f
 
-# ---- Tests (no hardware required) -----------------------------------------
+# ---------------------------------------------------------------------------
+# Inference services (runs on big machine)
+# ---------------------------------------------------------------------------
+
+up-server:
+	ssh $(BIG_MACHINE) 'cd ~/jarvis && docker compose -f jarvis/services/docker-compose.yml up --build -d'
+
+down-server:
+	ssh $(BIG_MACHINE) 'cd ~/jarvis && docker compose -f jarvis/services/docker-compose.yml down'
+
+logs-server:
+	ssh $(BIG_MACHINE) 'cd ~/jarvis && docker compose -f jarvis/services/docker-compose.yml logs -f'
+
+# ---------------------------------------------------------------------------
+# Tests (no hardware required - mocked)
+# ---------------------------------------------------------------------------
 
 test:
 	cd jarvis/backend && pip install -q pytest httpx && pytest ../tests -v
 
-# ---- Smoke tests (backend must be running on localhost:8000) ---------------
+# ---------------------------------------------------------------------------
+# Smoke tests (all services must be running)
+# ---------------------------------------------------------------------------
 
 smoke:
-	@echo "--- health ---"
+	@echo "--- Pi gateway health ---"
 	curl -sf http://localhost:8000/health | python3 -m json.tool
-	@echo "--- chat ---"
+	@echo "--- STT service health ---"
+	curl -sf http://$(BIG_MACHINE_IP):8001/health | python3 -m json.tool
+	@echo "--- TTS service health ---"
+	curl -sf http://$(BIG_MACHINE_IP):8002/health | python3 -m json.tool
+	@echo "--- Full chat round-trip ---"
 	curl -sf -X POST http://localhost:8000/chat \
 		-H "Content-Type: application/json" \
 		-d '{"text": "are you online"}' | python3 -m json.tool
-	@echo "--- speak ---"
-	curl -sf -X POST http://localhost:8000/speak \
-		-H "Content-Type: application/json" \
-		-d '{"text": "Understood. I am online."}' \
-		-o /tmp/jarvis_smoke.wav
-	@file /tmp/jarvis_smoke.wav
-	@echo "Smoke tests passed."
+	@echo "All smoke tests passed."
 
-# ---- Clean -----------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Clean
+# ---------------------------------------------------------------------------
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
