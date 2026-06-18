@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+pydantic
+numpy
+soundfile
+ollama
+faster-whisper
