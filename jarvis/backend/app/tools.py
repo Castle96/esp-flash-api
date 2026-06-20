@@ -48,6 +48,22 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "list_devices",
+            "description": (
+                "Lists all registered ESP32 devices with their ID, name, IP, "
+                "and online status. Use this to discover which devices are "
+                "available before flashing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "set_reminder",
             "description": (
                 "Schedules a spoken reminder to be delivered to the user "
@@ -66,6 +82,39 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["message", "minutes"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "flash_firmware",
+            "description": (
+                "Generates or updates firmware for a specific ESP32 device. "
+                "Creates a flash job that requires human approval before "
+                "the firmware is sent via OTA. The user will be prompted to "
+                "review and approve the firmware before flashing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "device_id": {
+                        "type": "string",
+                        "description": "The device ID (MAC) or name of the target ESP32.",
+                    },
+                    "firmware_code": {
+                        "type": "string",
+                        "description": (
+                            "The MicroPython source code for the firmware. "
+                            "Include a complete main.py script."
+                        ),
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "What this firmware does (shown in the review queue).",
+                    },
+                },
+                "required": ["device_id", "firmware_code", "description"],
             },
         },
     },
@@ -90,6 +139,53 @@ def get_pending_reminder() -> str | None:
 # ---------------------------------------------------------------------------
 # Handler implementations
 # ---------------------------------------------------------------------------
+
+def _list_devices(**_kwargs) -> str:
+    from .state import state
+    now = __import__("time").time()
+    devices = []
+    for d in state.devices.values():
+        online = (now - d.get("last_seen", 0)) <= 120
+        devices.append({
+            "id": d["id"],
+            "name": d.get("name", "ESP32"),
+            "ip": d.get("ip", "?"),
+            "online": online,
+        })
+    return json.dumps({"devices": devices})
+
+
+def _flash_firmware(device_id: str, firmware_code: str, description: str, **_kwargs) -> str:
+    from .state import create_flash_job, state
+
+    dev = None
+    for d in state.devices.values():
+        if d["id"] == device_id or d.get("name", "").lower() == device_id.lower():
+            dev = d
+            break
+    if not dev:
+        return json.dumps({
+            "error": f"Device '{device_id}' not found. Use list_devices to see available devices."
+        })
+
+    job = create_flash_job(
+        device_id=dev["id"],
+        device_name=dev.get("name", "ESP32"),
+        source="llm",
+        firmware_code=firmware_code,
+        description=description,
+    )
+    return json.dumps({
+        "status": "pending_review",
+        "job_id": job["id"],
+        "message": (
+            f"Firmware for {dev['name']} ({dev['id'][:12]}...) has been created "
+            f"and is pending your review. Check the Flash Queue in the dashboard "
+            f"to review and approve before it is sent via OTA."
+        ),
+        "description": description,
+    })
+
 
 def _get_current_time(**_kwargs) -> str:
     now = datetime.now()
@@ -133,7 +229,9 @@ def _set_reminder(message: str, minutes: int, **_kwargs) -> str:
 _HANDLERS: dict = {
     "get_current_time": _get_current_time,
     "get_system_status": _get_system_status,
+    "list_devices": _list_devices,
     "set_reminder": _set_reminder,
+    "flash_firmware": _flash_firmware,
 }
 
 
