@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DIVA — Device Integrated Voice Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #1e1e2e;
+      --surface:     #313244;
+      --surface2:    #45475a;
+      --border:      #585b70;
+      --accent:      #b4befe;
+      --accent-dim:  #6c7086;
+      --green:       #a6e3a1;
+      --amber:       #f9e2af;
+      --red:         #f38ba8;
+      --purple:      #cba6f7;
+      --text:        #cdd6f4;
+      --text-dim:    #a6adc8;
+      --muted:       #6c7086;
+      --font:        'Courier New', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 48px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-hex {
+      width: 26px;
+      height: 26px;
+      border: 1.5px solid var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    .logo-hex.pulse {
+      animation: logoPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 0 4px rgba(180,190,254,0.3); }
+      50%       { box-shadow: 0 0 14px rgba(180,190,254,0.5); }
+    }
+
+    .logo-text {
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 0.45em;
+      color: var(--accent);
+    }
+
+    .logo-sub {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      margin-left: 2px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 11px;
+    }
+
+    #clockDisplay {
+      color: var(--text);
+      letter-spacing: 0.08em;
+      min-width: 72px;
+      text-align: right;
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 7px rgba(166,227,161,0.4);
+      animation: blink 2.4s ease-in-out infinite;
+    }
+
+    .status-dot.error {
+      background: var(--red);
+      box-shadow: 0 0 7px rgba(243,139,168,0.4);
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+
+    .pipe-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+      min-width: 60px;
+      transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
+    }
+
+    .pipe-node.active {
+      border-color: var(--accent);
+      background: rgba(180,190,254,0.06);
+      box-shadow: 0 0 12px rgba(180,190,254,0.12);
+    }
+
+    .pipe-node.active .pipe-icon { color: var(--accent); }
+    .pipe-node.active .pipe-label { color: var(--accent); }
+
+    .pipe-node.done {
+      border-color: var(--green);
+    }
+
+    .pipe-node.done .pipe-icon { color: var(--green); }
+    .pipe-node.done .pipe-label { color: var(--green); }
+
+    .pipe-node.error {
+      border-color: var(--red);
+    }
+
+    .pipe-node.error .pipe-icon { color: var(--red); }
+    .pipe-node.error .pipe-label { color: var(--red); }
+
+    .pipe-icon {
+      font-size: 16px;
+      color: var(--muted);
+      transition: color 0.3s;
+    }
+
+    .pipe-label {
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+      transition: color 0.3s;
+    }
+
+    .pipe-arrow {
+      color: var(--border);
+      font-size: 14px;
+      padding: 0 4px;
+    }
+
+    .pipe-node .pipe-indicator {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: transparent;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+
+    .pipe-node.active .pipe-indicator {
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    .pipe-node.done .pipe-indicator {
+      background: var(--green);
+      box-shadow: 0 0 6px rgba(166,227,161,0.4);
+    }
+
+    .pipe-node.error .pipe-indicator {
+      background: var(--red);
+      box-shadow: 0 0 6px rgba(243,139,168,0.4);
+    }
+
+    .dashboard {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr 1fr 300px;
+      gap: 1px;
+      background: var(--border);
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      height: 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 8px;
+      letter-spacing: 0.32em;
+      color: var(--accent);
+      text-transform: uppercase;
+    }
+
+    .panel-tag {
+      font-size: 8px;
+      padding: 2px 6px;
+      border: 1px solid var(--accent-dim);
+      border-radius: 2px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 8px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .device-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .device-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 3px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      transition: border-color 0.2s;
+    }
+
+    .device-card.offline {
+      border-left-color: var(--muted);
+      opacity: 0.6;
+    }
+
+    .device-card.selected { border-color: var(--accent); }
+
+    .device-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .device-checkbox {
+      accent-color: var(--accent);
+      cursor: pointer;
+      width: 12px; height: 12px;
+    }
+
+    .device-name {
+      flex: 1;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--text);
+    }
+
+    .device-card-header-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+    }
+
+    .device-status {
+      font-size: 8px;
+      letter-spacing: 0.1em;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: rgba(166,227,161,0.10);
+      color: var(--green);
+    }
+
+    .device-card.offline .device-status {
+      background: rgba(108,112,134,0.20);
+      color: var(--muted);
+    }
+
+    .build-badge {
+      font-size: 7px;
+      padding: 1px 4px;
+      border-radius: 2px;
+      letter-spacing: 0.05em;
+      font-weight: bold;
+    }
+    .build-badge.success { background: rgba(166,227,161,0.15); color: #a6e3a1; }
+    .build-badge.failure { background: rgba(243,139,168,0.15); color: #f38ba8; }
+    .build-badge.running { background: rgba(249,226,175,0.15); color: #f9e2af; }
+    .build-badge.unknown { background: rgba(108,112,134,0.15); color: #6c7086; }
+
+    .device-detail {
+      font-size: 9px;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .device-detail span { color: var(--muted); }
+    .gitea-repo-link { color: var(--green); font-size: 9px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .gitea-repo-link:hover { text-decoration: underline; color: var(--accent); }
+    .device-log-toggle { cursor: pointer; font-size: 8px; color: var(--muted); }
+    .device-log-toggle:hover { color: var(--accent); }
+    .device-log-view { font-size: 8px; font-family: monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 2px; padding: 4px; max-height: 80px; overflow-y: auto; display: none; color: var(--text); line-height: 1.5; }
+
+    .no-devices {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      padding: 20px 0;
+      line-height: 1.8;
+    }
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      padding: 24px 0;
+    }
+
+    .event-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: start;
+      gap: 6px;
+      padding: 5px 7px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-dim);
+      border-radius: 2px;
+      animation: slideIn 0.25s ease-out;
+      font-size: 10px;
+    }
+
+    .event-item.ok     { border-left-color: var(--green); }
+    .event-item.warn   { border-left-color: var(--amber); }
+    .event-item.err    { border-left-color: var(--red);   }
+    .event-item.fresh  { border-left-color: var(--accent); }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    .ev-badge {
+      font-size: 7px;
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+
+    .b-audio  { background: rgba(180,190,254,0.12); color: #b4befe; }
+    .b-stt    { background: rgba(137,180,250,0.12); color: #89b4fa; }
+    .b-llm    { background: rgba(166,227,161,0.12); color: #a6e3a1; }
+    .b-tts    { background: rgba(148,226,213,0.12); color: #94e2d5; }
+    .b-err    { background: rgba(243,139,168,0.12); color: #f38ba8; }
+    .b-timer  { background: rgba(249,226,175,0.12); color: #f9e2af; }
+    .b-sys    { background: rgba(203,166,247,0.10); color: #cba6f7; }
+    .b-device { background: rgba(203,166,247,0.10); color: #cba6f7; }
+    .b-flash  { background: rgba(249,226,175,0.12); color: #f9e2af; }
+    .b-wake   { background: rgba(180,190,254,0.14); color: #b4befe; }
+    .b-gitea  { background: rgba(148,226,213,0.12); color: #94e2d5; }
+
+    .ev-text  { color: var(--text); word-break: break-word; line-height: 1.4; }
+    .ev-time  { font-size: 8px; color: var(--muted); margin-top: 2px; white-space: nowrap; }
+
+    .conv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .conv-entry {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 8px;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .conv-entry.user {
+      border-left: 3px solid var(--accent);
+    }
+
+    .conv-entry.assistant {
+      border-left: 3px solid var(--green);
+    }
+
+    .conv-head {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .conv-role {
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .conv-entry.user .conv-role { color: var(--accent); }
+    .conv-entry.assistant .conv-role { color: var(--green); }
+
+    .conv-time {
+      font-size: 8px;
+      color: var(--muted);
+    }
+
+    .conv-text {
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    .conv-synth {
+      font-size: 8px;
+      color: var(--muted);
+      margin-top: 4px;
+      cursor: pointer;
+    }
+
+    .conv-synth:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    .conv-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      padding: 24px 0;
+    }
+
+    .menu-section { margin-bottom: 14px; }
+
+    .menu-label {
+      font-size: 7px;
+      letter-spacing: 0.28em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10px;
+    }
+
+    .info-table tr + tr td { border-top: 1px solid var(--border); }
+
+    .info-table td {
+      padding: 4px 6px;
+      background: var(--surface);
+    }
+
+    .info-table td:first-child { color: var(--muted); width: 40%; }
+    .info-table td:last-child  { color: var(--accent); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 0; }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 6px 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      margin-bottom: 4px;
+    }
+
+    .btn:hover          { border-color: var(--accent); color: var(--accent); background: rgba(180,190,254,0.06); }
+    .btn.danger:hover   { border-color: var(--red);    color: var(--red);    background: rgba(243,139,168,0.06); }
+    .btn:disabled       { opacity: 0.4; cursor: not-allowed; }
+
+    .chat-box {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 10px;
+      padding: 6px;
+      resize: none;
+      height: 48px;
+      margin-bottom: 4px;
+    }
+
+    .chat-box:focus    { outline: none; border-color: var(--accent); }
+
+    .chat-reply {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 2px;
+      padding: 7px;
+      font-size: 10px;
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 30px;
+      display: none;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 10px 0;
+    }
+
+    .forecast-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .fc-card {
+      flex: 1;
+      min-width: 60px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 10px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .fc-card:hover { border-color: var(--accent-dim); }
+
+    .fc-day  { font-size: 8px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase; }
+    .fc-icon { font-size: 26px; line-height: 1; }
+    .fc-desc { font-size: 9px; color: var(--text-dim); }
+    .fc-hi   { font-size: 18px; color: var(--text); }
+    .fc-lo   { font-size: 10px; color: var(--muted); }
+    .fc-pop  { font-size: 9px; color: #1e66f5; }
+
+    .forecast-msg {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      padding: 24px 0;
+      line-height: 1.8;
+    }
+
+    .flash-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .flash-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent-dim);
+      border-radius: 3px;
+      padding: 8px;
+      font-size: 10px;
+    }
+
+    .flash-card.status-pending_review { border-left-color: var(--amber); }
+    .flash-card.status-approved,
+    .flash-card.status-in_progress   { border-left-color: var(--accent); }
+    .flash-card.status-completed     { border-left-color: var(--green);  }
+    .flash-card.status-rejected      { border-left-color: var(--muted);  opacity: 0.6; }
+    .flash-card.status-failed        { border-left-color: var(--red);    }
+
+    .flash-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .flash-device {
+      font-weight: bold;
+      color: var(--text);
+    }
+
+    .flash-status-badge {
+      font-size: 7px;
+      letter-spacing: 0.1em;
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    .flash-status-badge.pending_review { background: rgba(223,142,29,0.12); color: var(--amber); }
+    .flash-status-badge.approved,
+    .flash-status-badge.in_progress   { background: rgba(114,135,253,0.12); color: var(--accent); }
+    .flash-status-badge.completed     { background: rgba(64,160,43,0.12); color: var(--green);  }
+    .flash-status-badge.rejected      { background: rgba(156,160,176,0.15); color: var(--muted);  }
+    .flash-status-badge.failed        { background: rgba(210,15,57,0.12); color: var(--red);    }
+
+    .flash-desc {
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      word-break: break-word;
+      line-height: 1.4;
+    }
+
+    .flash-source {
+      font-size: 8px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .flash-actions {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .flash-actions .btn {
+      font-size: 9px;
+      padding: 3px 8px;
+      margin: 0;
+      width: auto;
+      display: inline-block;
+    }
+
+    .flash-actions .btn-approve { border-color: var(--green); color: var(--green); }
+    .flash-actions .btn-approve:hover { background: rgba(64,160,43,0.08); }
+    .flash-actions .btn-reject  { border-color: var(--red);   color: var(--red);   }
+    .flash-actions .btn-reject:hover  { background: rgba(210,15,57,0.06);  }
+
+    .flash-code-preview {
+      margin-top: 4px;
+      padding: 4px 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 8px;
+      color: var(--text-dim);
+      max-height: 80px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+
+    .flash-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 10px;
+      padding: 16px 0;
+    }
+
+    .flash-toggle {
+      cursor: pointer;
+    }
+
+    .flash-toggle:hover { color: var(--accent); }
+
+    .flash-new-btn {
+      font-size: 8px;
+      padding: 2px 7px;
+      border: 1px solid var(--accent-dim);
+      border-radius: 2px;
+      color: var(--accent);
+      cursor: pointer;
+      background: transparent;
+      font-family: var(--font);
+      letter-spacing: 0.08em;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+
+    .flash-new-btn:hover {
+      border-color: var(--accent);
+      background: rgba(114,135,253,0.06);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.25);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      width: 560px;
+      max-width: 94vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .modal-title {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--accent);
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+      font-family: var(--font);
+    }
+
+    .modal-close:hover { color: var(--red); }
+
+    .modal-body {
+      padding: 14px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-body label {
+      display: block;
+      font-size: 8px;
+      letter-spacing: 0.2em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      margin-top: 10px;
+    }
+
+    .modal-body label:first-child { margin-top: 0; }
+
+    .modal-body select,
+    .modal-body textarea,
+    .modal-body input[type="text"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 10px;
+      padding: 6px 8px;
+    }
+
+    .modal-body select:focus,
+    .modal-body textarea:focus,
+    .modal-body input[type="text"]:focus { outline: none; border-color: var(--accent); }
+
+    .modal-body textarea { resize: vertical; min-height: 80px; }
+
+    .modal-body select option { background: var(--surface); color: var(--text); }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      padding: 10px 14px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .modal-footer .btn {
+      width: auto;
+      padding: 6px 16px;
+      margin: 0;
+      font-size: 10px;
+      display: inline-block;
+      text-align: center;
+    }
+
+    .modal-footer .btn-primary {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .modal-footer .btn-primary:hover {
+      background: rgba(114,135,253,0.06);
+    }
+
+    .modal-confirm-detail {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 8px;
+      margin-bottom: 6px;
+    }
+
+    .modal-confirm-detail .row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      padding: 3px 0;
+    }
+
+    .modal-confirm-detail .row .lbl { color: var(--muted); }
+    .modal-confirm-detail .row .val { color: var(--text); max-width: 70%; text-align: right; word-break: break-word; }
+
+    .modal-code-preview {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 6px;
+      font-size: 8px;
+      color: var(--text-dim);
+      max-height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 1100px) {
+      .dashboard {
+        grid-template-columns: 1fr 1fr;
+      }
+      .pipeline { padding: 10px 12px; gap: 0; overflow-x: auto; }
+      .pipe-node { padding: 4px 8px; min-width: 48px; }
+      .pipe-arrow { font-size: 10px; }
+    }
+
+    @media (max-width: 700px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+      }
+      header { padding: 0 10px; }
+      .logo-sub { display: none; }
+      .forecast-row { flex-wrap: wrap; }
+      .fc-card { min-width: calc(50% - 4px); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-hex pulse">D</div>
+    <div>
+      <div class="logo-text">DIVA</div>
+      <div class="logo-sub">ESP MESH DASHBOARD</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="wwPill" style="display:none;font-size:9px;letter-spacing:0.1em;padding:2px 8px;border:1px solid var(--border);border-radius:10px;color:var(--muted)">⚡ wake: --</span>
+    <span id="clockDisplay">--:--:--</span>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">ONLINE</span>
+    </div>
+  </div>
+</header>
+
+<div class="pipeline" id="pipeline">
+  <div class="pipe-node" data-stage="wakeword">
+    <div class="pipe-icon">🎤</div>
+    <div class="pipe-label">WAKE</div>
+    <div class="pipe-indicator"></div>
+  </div>
+  <div class="pipe-arrow">▸</div>
+  <div class="pipe-node" data-stage="esp32">
+    <div class="pipe-icon">🔊</div>
+    <div class="pipe-label">ESP32</div>
+    <div class="pipe-indicator"></div>
+  </div>
+  <div class="pipe-arrow">▸</div>
+  <div class="pipe-node" data-stage="stt">
+    <div class="pipe-icon">📝</div>
+    <div class="pipe-label">STT</div>
+    <div class="pipe-indicator"></div>
+  </div>
+  <div class="pipe-arrow">▸</div>
+  <div class="pipe-node" data-stage="llm">
+    <div class="pipe-icon">🧠</div>
+    <div class="pipe-label">LLM</div>
+    <div class="pipe-indicator"></div>
+  </div>
+  <div class="pipe-arrow">▸</div>
+  <div class="pipe-node" data-stage="tts">
+    <div class="pipe-icon">🔊</div>
+    <div class="pipe-label">TTS</div>
+    <div class="pipe-indicator"></div>
+  </div>
+  <div class="pipe-arrow">▸</div>
+  <div class="pipe-node" data-stage="reply">
+    <div class="pipe-icon">📡</div>
+    <div class="pipe-label">REPLY</div>
+    <div class="pipe-indicator"></div>
+  </div>
+</div>
+
+<div class="dashboard">
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">ESP Devices</span>
+      <span>
+        <span class="panel-tag" id="deviceCount">0</span>
+        <span class="panel-tag" style="cursor:pointer" onclick="selectAllDevices()" title="Select all">⎔</span>
+      </span>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap" id="fleetBar">
+        <button class="btn" style="flex:1;font-size:8px;padding:3px 6px;margin:0" onclick="fleetAction('reboot')" disabled id="fleetRebootBtn">⟳ Reboot</button>
+        <button class="btn" style="flex:1;font-size:8px;padding:3px 6px;margin:0" onclick="fleetAction('flash_approve')" disabled id="fleetFlashBtn">⚡ Flash</button>
+        <button class="btn" style="flex:0;font-size:8px;padding:3px 6px;margin:0" onclick="clearDeviceSelection()">✕</button>
+      </div>
+      <div class="device-list" id="deviceList">
+        <div class="no-devices">No ESP32 devices connected.<br><small>Hold the button to speak.</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Agent Activity</span>
+      <span class="panel-tag" id="evtCount">0 events</span>
+    </div>
+    <div class="panel-body">
+      <div class="event-list" id="eventList">
+        <div class="placeholder" id="evtPlaceholder">Waiting for pipeline events…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Conversation</span>
+      <span class="panel-tag" id="convCount">0</span>
+    </div>
+    <div class="panel-body">
+      <div class="conv-list" id="convList">
+        <div class="conv-empty">No messages yet.<br><small>Start speaking or use text chat.</small></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Controls</span>
+      <span class="panel-tag">MENU</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="menu-section">
+        <div class="menu-label">System Info</div>
+        <table class="info-table">
+          <tr><td>status</td><td id="iStatus">—</td></tr>
+          <tr><td>model</td><td id="iModel">—</td></tr>
+          <tr><td>stt</td><td id="iStt">—</td></tr>
+          <tr><td>tts</td><td id="iTts">—</td></tr>
+          <tr><td>wake word</td><td id="iWakeword">—</td></tr>
+          <tr><td>devices</td><td id="iDevices">0</td></tr>
+        </table>
+      </div>
+
+      <div class="menu-section" id="giteaSection" style="display:none">
+        <div class="menu-label">Gitea</div>
+        <table class="info-table">
+          <tr><td>server</td><td id="iGiteaUrl">—</td></tr>
+          <tr><td>version</td><td id="iGiteaVer">—</td></tr>
+          <tr><td>devices w/ repo</td><td id="iGiteaDevs">0</td></tr>
+        </table>
+        <button class="btn" style="font-size:9px;padding:3px 8px;margin-top:6px" onclick="setupGiteaWebhook()">🔗 Setup Webhooks</button>
+        <span id="giteaWebhookStatus" style="font-size:8px;color:var(--muted);margin-left:4px"></span>
+      </div>
+
+      <div class="menu-section">
+        <div class="menu-label">Forecast</div>
+        <div class="forecast-row" id="forecastGrid">
+          <div class="forecast-msg">Fetching…</div>
+        </div>
+      </div>
+
+      <div class="menu-section" id="wwSection" style="display:none">
+        <div class="menu-label">Wake Words</div>
+        <div id="wwList" style="font-size:9px;color:var(--text-dim);margin-bottom:6px">Loading…</div>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <input id="wwName" class="chat-box" style="height:auto;font-size:9px;padding:3px;flex:1" placeholder="word name">
+          <button class="btn" style="width:auto;font-size:9px;padding:3px 8px;margin:0" onclick="trainWakeWord()">Train</button>
+        </div>
+        <input type="file" id="wwFile" accept="audio/wav,audio/webm,audio/*" style="display:none" onchange="uploadWakeWord(this)">
+        <button class="btn" style="font-size:9px;padding:3px 8px" onclick="document.getElementById('wwFile').click()">📁 Select Audio</button>
+        <span id="wwSelected" style="font-size:8px;color:var(--muted);margin-left:4px"></span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label">Actions</div>
+        <button class="btn" onclick="refreshHealth()">⟳  Refresh Health</button>
+        <button class="btn danger" onclick="clearHistory()">✕  Clear Conversation</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label">Text Chat</div>
+        <textarea class="chat-box" id="chatInput" placeholder="Type a message…"></textarea>
+        <button class="btn" id="chatSendBtn" onclick="sendChat()">→  Send</button>
+        <div class="chat-reply" id="chatReply"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label" style="cursor:pointer" onclick="toggleFlashQueue()">
+          <span id="flashToggleIcon">▸</span> Flash Queue
+          <span id="flashPendingCount" style="float:right;font-size:7px;color:var(--muted)">0 pending</span>
+        </div>
+        <button class="flash-new-btn" onclick="openFlashModal()">+ New Flash</button>
+        <div id="flashQueueBody" style="display:none">
+          <div class="flash-list" id="flashList">
+            <div class="flash-empty" id="flashEmpty">No flash jobs.<br><small>Use DIVA to flash firmware or use the API.</small></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="menu-section">
+        <div class="menu-label">Device Logs</div>
+        <select id="logDeviceSelect" class="chat-box" style="height:auto;font-size:9px;padding:3px">
+          <option value="">— select device —</option>
+        </select>
+        <div id="logViewer" style="background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:4px;font-size:9px;height:120px;overflow-y:auto;margin-top:4px;font-family:monospace;color:var(--text)">
+          <div class="placeholder" style="padding:8px">Select a device to view logs.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="flashModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="flashModalTitle">New Flash Job</span>
+      <button class="modal-close" onclick="closeFlashModal()">✕</button>
+    </div>
+    <div class="modal-body" id="flashModalBody">
+
+      <div id="flashFormStep">
+        <label>Target Device</label>
+        <select id="flashDeviceSelect"><option value="">— loading devices —</option></select>
+
+        <label>Firmware Source</label>
+        <div style="display:flex;gap:6px;margin-bottom:4px">
+          <button class="btn" id="srcCodeBtn" onclick="setFirmwareSource('code')" style="width:auto;font-size:9px;padding:3px 10px;margin:0;border-color:var(--accent);color:var(--accent)">✎ Code</button>
+          <button class="btn" id="srcFileBtn" onclick="setFirmwareSource('file')" style="width:auto;font-size:9px;padding:3px 10px;margin:0">📁 Upload</button>
+        </div>
+
+        <div id="firmwareCodeGroup">
+          <textarea id="flashFirmwareCode" placeholder="# MicroPython code here&#10;def blink():&#10;    import machine&#10;    import time&#10;    led = machine.Pin(2, machine.Pin.OUT)&#10;    while True:&#10;        led.value(1)&#10;        time.sleep(0.5)&#10;        led.value(0)&#10;        time.sleep(0.5)"></textarea>
+        </div>
+
+        <div id="firmwareFileGroup" style="display:none">
+          <input type="file" id="flashFirmwareFile" accept=".py,.bin" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:2px;color:var(--text);font-family:var(--font);font-size:10px;padding:6px 8px" />
+        </div>
+
+        <label>Description</label>
+        <input type="text" id="flashDescription" placeholder="e.g. Blink test for living room light" />
+      </div>
+
+      <div id="flashConfirmStep" style="display:none">
+        <div class="modal-confirm-detail">
+          <div class="row"><span class="lbl">Device</span><span class="val" id="cfDevice">—</span></div>
+          <div class="row"><span class="lbl">Description</span><span class="val" id="cfDescription">—</span></div>
+          <div class="row"><span class="lbl">Source</span><span class="val" id="cfSource">—</span></div>
+        </div>
+        <label>Firmware Preview</label>
+        <div class="modal-code-preview" id="cfCodePreview">—</div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="flashModalBackBtn" style="display:none" onclick="flashModalBack()">← Back</button>
+      <button class="btn" onclick="closeFlashModal()">Cancel</button>
+      <button class="btn btn-primary" id="flashModalNextBtn" onclick="flashModalNext()">Next →</button>
+      <button class="btn btn-primary" id="flashModalConfirmBtn" style="display:none" onclick="flashModalConfirm()">✓ Confirm & Create Job</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $clock = document.getElementById('clockDisplay');
+function tick() {
+  $clock.textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+tick(); setInterval(tick, 1000);
+
+function setStatus(ok) {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  dot.className  = ok ? 'status-dot' : 'status-dot error';
+  text.textContent = ok ? 'ONLINE' : 'ERROR';
+}
+
+function setPipeline(stage, cls) {
+  document.querySelectorAll('.pipe-node').forEach(n => {
+    n.classList.remove('active', 'done', 'error');
+  });
+  if (!stage) return;
+  const el = document.querySelector(`[data-stage="${stage}"]`);
+  if (el) {
+    el.classList.add(cls);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+}
+
+async function refreshHealth() {
+  try {
+    const r = await fetch('/health');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    document.getElementById('iStatus').textContent = d.status;
+    document.getElementById('iModel').textContent  = d.model;
+    document.getElementById('iStt').textContent    = d.whisper;
+    document.getElementById('iTts').textContent    = d.tts;
+    document.getElementById('iWakeword').textContent = d.wakeword ? 'enabled' : 'disabled';
+    document.getElementById('iDevices').textContent = d.devices;
+    setStatus(true);
+    if (d.gitea_url) {
+      document.getElementById('giteaSection').style.display = '';
+      document.getElementById('iGiteaUrl').textContent = d.gitea_url.replace(/^https?:\/\//, '');
+      refreshGiteaStatus();
+    }
+  } catch { setStatus(false); }
+}
+refreshHealth(); setInterval(refreshHealth, 30_000);
+
+async function refreshGiteaStatus() {
+  try {
+    const r = await fetch('/gitea/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('iGiteaVer').textContent = d.version || 'unreachable';
+    if (d.enabled && d.version) {
+      // count devices with gitea_repo set
+      const dr = await fetch('/devices');
+      const devs = await dr.json();
+      const withRepo = devs.filter(x => x.gitea_repo).length;
+      document.getElementById('iGiteaDevs').textContent = withRepo;
+    }
+  } catch {}
+}
+
+async function refreshWakewordStatus() {
+  try {
+    const r = await fetch('/wakeword/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    const pill = document.getElementById('wwPill');
+    if (d.enabled && d.status === 'ok') {
+      const wws = [...(d.builtin_wake_words || []), ...(d.custom_wake_words || [])];
+      pill.style.display = 'inline';
+      pill.textContent = `⚡ wake: ${wws.join(', ') || '—'}`;
+      pill.style.borderColor = 'var(--accent-dim)';
+      pill.style.color = 'var(--accent)';
+    } else if (d.enabled) {
+      pill.style.display = 'inline';
+      pill.textContent = '⚡ wake: error';
+      pill.style.borderColor = 'var(--red)';
+      pill.style.color = 'var(--red)';
+    } else {
+      pill.style.display = 'inline';
+      pill.textContent = '⚡ wake: off';
+      pill.style.borderColor = 'var(--border)';
+      pill.style.color = 'var(--muted)';
+    }
+  } catch {
+    const pill = document.getElementById('wwPill');
+    pill.style.display = 'inline';
+    pill.textContent = '⚡ wake: —';
+    pill.style.borderColor = 'var(--border)';
+    pill.style.color = 'var(--muted)';
+  }
+}
+refreshWakewordStatus(); setInterval(refreshWakewordStatus, 30_000);
+
+// ── Selection state ──
+let selectedDeviceIds = new Set();
+
+function selectAllDevices() {
+  document.querySelectorAll('.device-checkbox').forEach(cb => {
+    cb.checked = true;
+    cb.closest('.device-card').classList.add('selected');
+    selectedDeviceIds.add(cb.value);
+  });
+  updateFleetButtons();
+}
+
+function clearDeviceSelection() {
+  document.querySelectorAll('.device-checkbox').forEach(cb => {
+    cb.checked = false;
+    cb.closest('.device-card').classList.remove('selected');
+  });
+  selectedDeviceIds.clear();
+  updateFleetButtons();
+}
+
+function toggleDeviceSelection(cb) {
+  const card = cb.closest('.device-card');
+  if (cb.checked) {
+    selectedDeviceIds.add(cb.value);
+    card.classList.add('selected');
+  } else {
+    selectedDeviceIds.delete(cb.value);
+    card.classList.remove('selected');
+  }
+  updateFleetButtons();
+}
+
+function updateFleetButtons() {
+  const hasSel = selectedDeviceIds.size > 0;
+  document.getElementById('fleetRebootBtn').disabled = !hasSel;
+  document.getElementById('fleetFlashBtn').disabled = !hasSel;
+}
+
+// ── Fleet actions ──
+async function fleetAction(action) {
+  if (selectedDeviceIds.size === 0) return;
+  const ids = Array.from(selectedDeviceIds);
+  try {
+    const r = await fetch('/fleet/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ids: ids, action }),
+    });
+    const data = await r.json();
+    pushEvent({ event: `fleet:${action}:${ids.length}devs`, ts: Date.now() / 1000 });
+    if (action === 'reboot') {
+      for (const [did, res] of Object.entries(data.results || {})) {
+        pushEvent({ event: `device:reboot:${did}:${res.ok ? 'ok' : 'fail'}`, ts: Date.now() / 1000 });
+      }
+    }
+    setTimeout(refreshDevices, 3000);
+  } catch (e) {
+    pushEvent({ event: `fleet:error:${e.message}`, ts: Date.now() / 1000 });
+  }
+}
+
+async function refreshDevices() {
+  try {
+    const r = await fetch('/devices');
+    if (!r.ok) throw new Error(r.status);
+    const devs = await r.json();
+    const list = document.getElementById('deviceList');
+    const count = document.getElementById('deviceCount');
+    count.textContent = devs.length;
+    list.innerHTML = '';
+    if (devs.length === 0) {
+      list.innerHTML = '<div class="no-devices">No ESP32 devices connected.<br><small>Hold the button to speak.</small></div>';
+      return;
+    }
+    // Populate log device selector
+    const logSel = document.getElementById('logDeviceSelect');
+    const currentLogDev = logSel.value;
+    logSel.innerHTML = '<option value="">— select device —</option>';
+    devs.forEach(d => {
+      logSel.innerHTML += `<option value="${d.id}">${escapeHtml(d.name)}</option>`;
+    });
+    if (currentLogDev && [...logSel.options].some(o => o.value === currentLogDev)) {
+      logSel.value = currentLogDev;
+    }
+
+    // Fetch gitea build statuses for each unique repo
+    const buildCache = {};
+    for (const d of devs) {
+      if (d.gitea_repo && !buildCache[d.gitea_repo]) {
+        try {
+          const br = await fetch(`/gitea/actions/${encodeURIComponent(d.gitea_repo)}`);
+          if (br.ok) buildCache[d.gitea_repo] = await br.json();
+        } catch {}
+      }
+    }
+
+    devs.forEach(d => {
+      const online = d.online !== false;
+      const lastSeen = new Date(d.last_seen * 1000);
+      const ago = Math.floor((Date.now() - lastSeen) / 1000);
+      const agoStr = ago < 60 ? 'just now' : ago < 3600 ? `${Math.floor(ago/60)}m ago` : ago < 86400 ? `${Math.floor(ago/3600)}h ago` : `${Math.floor(ago/86400)}d ago`;
+      const card = document.createElement('div');
+      card.id = `dev-${d.id}`;
+      card.className = `device-card${online ? '' : ' offline'}${selectedDeviceIds.has(d.id) ? ' selected' : ''}`;
+
+      const buildInfo = d.gitea_repo ? buildCache[d.gitea_repo] : null;
+      let buildBadge = '';
+      if (buildInfo) {
+        const bs = buildInfo.status || 'unknown';
+        const cls = bs === 'success' ? 'success' : bs === 'failure' ? 'failure' : bs === 'running' ? 'running' : 'unknown';
+        buildBadge = `<span class="build-badge ${cls}">${bs === 'success' ? '✓' : bs === 'failure' ? '✗' : bs === 'running' ? '○' : '?'} ${bs}</span>`;
+      }
+
+      const repoHtml = d.gitea_repo
+        ? `<div class="device-detail"><span>repo</span> <a href="${escapeHtml(d.gitea_repo)}" target="_blank" class="gitea-repo-link">${escapeHtml(d.gitea_repo)}</a> ${buildBadge}</div>`
+        : '';
+      card.innerHTML = `
+        <div class="device-card-header">
+          <input type="checkbox" class="device-checkbox" value="${d.id}" onchange="toggleDeviceSelection(this)" ${selectedDeviceIds.has(d.id) ? 'checked' : ''}>
+          <span class="device-name">${d.name}</span>
+          <div class="device-card-header-right">
+            <span class="device-status">${online ? '● ONLINE' : '○ OFFLINE'}</span>
+            <span class="device-log-toggle" onclick="toggleDeviceLog('${d.id}')" title="Toggle logs">📋</span>
+          </div>
+        </div>
+        <div class="device-detail"><span>IP</span> ${d.ip}</div>
+        <div class="device-detail"><span>ID</span> ${d.id.substring(0, 16)}…</div>
+        <div class="device-detail"><span>seen</span> ${agoStr}</div>
+        ${repoHtml}
+        <div class="device-log-view" id="log-${d.id}"></div>
+      `;
+      list.appendChild(card);
+    });
+    updateFleetButtons();
+  } catch {}
+}
+refreshDevices(); setInterval(refreshDevices, 15_000);
+
+// ── Device logs ──
+async function toggleDeviceLog(devId) {
+  const el = document.getElementById(`log-${devId}`);
+  if (!el) return;
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.textContent = 'Loading logs…';
+  try {
+    const r = await fetch(`/logs/${devId}`);
+    if (!r.ok) throw new Error(r.status);
+    const logs = await r.json();
+    el.innerHTML = logs.length
+      ? logs.map(l => `<div>${new Date(l.ts * 1000).toLocaleTimeString()} [${l.level}] ${escapeHtml(l.message)}</div>`).join('')
+      : 'No logs yet.';
+    startLogStream(devId, el);
+  } catch { el.textContent = 'Failed to load logs.'; }
+}
+
+// ── Wake word training ──
+let _wwAudioBytes = null;
+let _wwAudioName = '';
+
+function uploadWakeWord(input) {
+  const file = input.files[0];
+  if (!file) return;
+  _wwAudioName = file.name;
+  document.getElementById('wwSelected').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    _wwAudioBytes = e.target.result;
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function trainWakeWord() {
+  const name = document.getElementById('wwName').value.trim();
+  if (!name) { alert('Enter a name for the wake word'); return; }
+  if (!_wwAudioBytes) { alert('Select an audio file first'); return; }
+  try {
+    const blob = new Blob([_wwAudioBytes]);
+    const fd = new FormData();
+    fd.append('file', blob, _wwAudioName || 'recording.wav');
+    const r = await fetch(`/wakeword/train/${encodeURIComponent(name)}`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+    pushEvent({ event: `wakeword:trained:${name}`, ts: Date.now() / 1000 });
+    document.getElementById('wwName').value = '';
+    _wwAudioBytes = null;
+    _wwAudioName = '';
+    document.getElementById('wwSelected').textContent = '';
+    refreshCustomWakeWords();
+  } catch (e) { alert('Training failed: ' + e.message); }
+}
+
+async function refreshCustomWakeWords() {
+  try {
+    const r = await fetch('/wakeword/custom');
+    if (!r.ok) return;
+    const d = await r.json();
+    const list = document.getElementById('wwList');
+    const words = d.custom_wake_words || [];
+    if (words.length === 0) {
+      list.innerHTML = '<span style="color:var(--muted)">No custom words. Upload audio to train one.</span>';
+      return;
+    }
+    list.innerHTML = words.map(w =>
+      `<span style="display:inline-flex;align-items:center;gap:4px;margin:2px;padding:1px 6px;border:1px solid var(--border);border-radius:2px;font-size:9px">
+        🎤 ${w}
+        <span style="cursor:pointer;color:var(--red)" onclick="deleteWakeWord('${w}')">✕</span>
+      </span>`
+    ).join(' ');
+  } catch {}
+}
+
+async function deleteWakeWord(name) {
+  try {
+    await fetch(`/wakeword/custom/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    refreshCustomWakeWords();
+  } catch {}
+}
+
+// ── SSE log streams ──
+let _logStreamControllers = {};
+
+function startLogStream(devId, el) {
+  if (_logStreamControllers[devId]) return;
+  try {
+    const es = new EventSource(`/logs/${devId}`);
+    _logStreamControllers[devId] = es;
+    es.onmessage = function(e) {
+      try {
+        const data = JSON.parse(e.data);
+        const line = document.createElement('div');
+        line.textContent = `${new Date(data.ts * 1000).toLocaleTimeString()} [${data.level}] ${data.message}`;
+        el.appendChild(line);
+        el.scrollTop = el.scrollHeight;
+        // Keep max ~50 lines
+        while (el.children.length > 50) el.removeChild(el.firstChild);
+      } catch {}
+    };
+    es.onerror = function() {
+      delete _logStreamControllers[devId];
+      es.close();
+    };
+  } catch {}
+}
+
+// ── Log viewer selector ──
+document.addEventListener('change', function(e) {
+  if (e.target.id === 'logDeviceSelect' && e.target.value) {
+    toggleDeviceLog(e.target.value);
+  }
+});
+
+// ── Wake word UI init ──
+(async function initWakeWordUI() {
+  try {
+    const r = await fetch('/wakeword/status');
+    const d = await r.json();
+    if (d.enabled) {
+      document.getElementById('wwSection').style.display = '';
+      refreshCustomWakeWords();
+    }
+  } catch {}
+})();
+
+async function clearHistory() {
+  await fetch('/history', { method: 'DELETE' }).catch(() => {});
+  pushEvent({ event: 'history:cleared', ts: Date.now() / 1000 });
+  refreshConversation();
+}
+
+async function refreshConversation() {
+  try {
+    const r = await fetch('/conversation');
+    if (!r.ok) return;
+    const msgs = await r.json();
+    const list = document.getElementById('convList');
+    document.getElementById('convCount').textContent = msgs.length;
+    list.innerHTML = '';
+    if (msgs.length === 0) {
+      list.innerHTML = '<div class="conv-empty">No messages yet.<br><small>Start speaking or use text chat.</small></div>';
+      return;
+    }
+    msgs.slice(-30).reverse().forEach(m => {
+      const t = new Date(m.ts * 1000);
+      const ts = t.toLocaleTimeString('en-US', { hour12: false });
+      const entry = document.createElement('div');
+      entry.className = `conv-entry ${m.role}`;
+      entry.innerHTML = `
+        <div class="conv-head">
+          <span class="conv-role">${m.role === 'user' ? 'You' : 'DIVA'}</span>
+          <span class="conv-time">${ts}</span>
+        </div>
+        <div class="conv-text">${escapeHtml(m.content)}</div>
+        ${m.role === 'assistant' ? `<div class="conv-synth" onclick="speakText('${escapeHtml(m.content).replace(/'/g, "\\'")}')">♬ Speak</div>` : ''}
+      `;
+      list.appendChild(entry);
+    });
+  } catch {}
+}
+refreshConversation(); setInterval(refreshConversation, 10_000);
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function speakText(text) {
+  try {
+    const r = await fetch('/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    a.onended = () => URL.revokeObjectURL(url);
+    a.play();
+  } catch {}
+}
+
+async function sendChat() {
+  const inp  = document.getElementById('chatInput');
+  const rep  = document.getElementById('chatReply');
+  const btn  = document.getElementById('chatSendBtn');
+  const text = inp.value.trim();
+  if (!text) return;
+
+  rep.style.display = 'block';
+  rep.textContent   = '…';
+  inp.disabled = btn.disabled = true;
+
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json();
+    rep.textContent = d.reply ?? d.detail ?? '(no response)';
+    inp.value = '';
+    refreshConversation();
+  } catch (e) {
+    rep.textContent = 'Error: ' + e.message;
+  } finally {
+    inp.disabled = btn.disabled = false;
+    inp.focus();
+  }
+}
+
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+let evtTotal = 0;
+
+const BADGE = {
+  audio:  { cls: 'b-audio',  lbl: 'AUDIO' },
+  stt:    { cls: 'b-stt',    lbl: 'STT'   },
+  llm:    { cls: 'b-llm',    lbl: 'LLM'   },
+  tts:    { cls: 'b-tts',    lbl: 'TTS'   },
+  err:    { cls: 'b-err',    lbl: 'ERROR' },
+  timer:  { cls: 'b-timer',  lbl: 'TIMER' },
+  sys:    { cls: 'b-sys',    lbl: 'SYS'   },
+  device: { cls: 'b-device', lbl: 'DEV'   },
+  flash:  { cls: 'b-flash',  lbl: 'FLASH' },
+  wake:   { cls: 'b-wake',   lbl: 'WAKE'  },
+};
+
+function parseMeta(ev) {
+  if (ev.startsWith('voice:wakeword'))         return { badge: BADGE.wake,  cls: 'fresh' };
+  if (ev.startsWith('voice:recv'))              return { badge: BADGE.audio, cls: 'fresh' };
+  if (ev.startsWith('voice:transcribed'))        return { badge: BADGE.stt,   cls: 'fresh' };
+  if (ev.startsWith('voice:llm_ok'))             return { badge: BADGE.llm,   cls: 'ok'    };
+  if (ev.startsWith('voice:tts_ok'))             return { badge: BADGE.tts,   cls: 'ok'    };
+  if (ev.startsWith('device:'))                  return { badge: BADGE.device, cls: 'fresh' };
+  if (ev.startsWith('flash:'))                   return { badge: BADGE.flash, cls: 'fresh' };
+  if (ev.includes('error'))                      return { badge: BADGE.err,   cls: 'err'   };
+  if (ev.startsWith('reminder'))                 return { badge: BADGE.timer, cls: 'warn'  };
+  if (ev.startsWith('history'))                  return { badge: BADGE.sys,   cls: 'fresh' };
+  return { badge: BADGE.sys, cls: '' };
+}
+
+function humanize(ev) {
+  const map = {
+    'voice:recv':             'Audio received from ESP32',
+    'voice:llm_ok':           'LLM reply generated',
+    'voice:tts_ok':           'TTS synthesis complete',
+    'history:cleared':        'Conversation history cleared',
+    'voice:wakeword:detected': 'Wake word "Diva" detected',
+  };
+  if (map[ev]) return map[ev];
+  if (ev.startsWith('voice:wakeword:not_detected')) return 'No wake word detected';
+  if (ev.startsWith('voice:wakeword_error'))         return `Wake word error: ${ev.slice(22)}`;
+  if (ev.startsWith('voice:transcribed:'))   return `Transcribed — lang: ${ev.split(':')[2]}`;
+  if (ev.startsWith('voice:stt_error:'))     return `STT failed: ${ev.slice(16)}`;
+  if (ev.startsWith('voice:llm_error:'))     return `LLM failed: ${ev.slice(16)}`;
+  if (ev.startsWith('voice:tts_error:'))     return `TTS failed: ${ev.slice(16)}`;
+  if (ev.startsWith('reminder:queued:'))     return `Reminder set — "${ev.slice(16)}"`;
+  if (ev.startsWith('reminder:pending:'))    return `Reminder delivered — "${ev.slice(17)}"`;
+  if (ev.startsWith('device:heartbeat:'))    return `Device heartbeat — ${ev.slice(18)}`;
+  if (ev.startsWith('flash:created:'))       return `Flash job created — ${ev.slice(14)}`;
+  if (ev.startsWith('flash:approved:'))      return `Flash approved — sending OTA to ${ev.slice(15)}`;
+  if (ev.startsWith('flash:done:'))          return `OTA flash complete — ${ev.slice(11)}`;
+  if (ev.startsWith('flash:failed:'))        return `OTA flash failed — ${ev.slice(13)}`;
+  if (ev.startsWith('flash:rejected:'))      return `Flash job rejected — ${ev.slice(15)}`;
+  if (ev.startsWith('flash:cancelled:'))     return `Flash job cancelled — ${ev.slice(16)}`;
+  return ev;
+}
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString('en-US', { hour12: false });
+}
+
+function pushEvent(data) {
+  const list = document.getElementById('eventList');
+  document.getElementById('evtPlaceholder')?.remove();
+
+  const { badge, cls } = parseMeta(data.event);
+
+  if (data.event.startsWith('voice:wakeword:detected')) {
+    setPipeline('wakeword', 'done');
+  }
+  if (data.event.startsWith('voice:wakeword:not_detected')) {
+    setPipeline('wakeword', 'error');
+  }
+  if (data.event.startsWith('voice:wakeword_error')) {
+    setPipeline('wakeword', 'error');
+  }
+  if (data.event.startsWith('voice:recv')) {
+    setPipeline('wakeword', 'done');
+    setPipeline('esp32', 'active');
+  }
+  if (data.event.startsWith('voice:transcribed')) { setPipeline('esp32', 'done'); setPipeline('stt', 'active'); }
+  if (data.event.startsWith('voice:llm_ok'))      { setPipeline('stt', 'done'); setPipeline('llm', 'active'); }
+  if (data.event.startsWith('voice:tts_ok'))      { setPipeline('llm', 'done'); setPipeline('tts', 'active'); setPipeline('reply', 'done'); }
+  if (data.event.startsWith('voice:stt_error'))   { setPipeline('stt', 'error'); }
+  if (data.event.startsWith('voice:llm_error'))   { setPipeline('llm', 'error'); }
+  if (data.event.startsWith('voice:tts_error'))   { setPipeline('tts', 'error'); }
+
+  const row = document.createElement('div');
+  row.className = `event-item ${cls}`;
+  row.innerHTML = `
+    <span class="ev-badge ${badge.cls}">${badge.lbl}</span>
+    <span class="ev-text">${humanize(data.event)}</span>
+    <span class="ev-time">${fmtTime(data.ts)}</span>
+  `;
+  list.prepend(row);
+
+  while (list.children.length > 80) list.lastChild.remove();
+  document.getElementById('evtCount').textContent = `${++evtTotal} events`;
+}
+
+function connectSSE() {
+  const es = new EventSource('/events');
+  es.onmessage = e => { try { pushEvent(JSON.parse(e.data)); } catch (_) {} };
+  es.onerror   = () => { setStatus(false); es.close(); setTimeout(connectSSE, 5000); };
+}
+connectSSE();
+
+const WMO_MAP = {
+  0:  ['☀️',  'Clear sky'],
+  1:  ['🌤️', 'Mainly clear'],
+  2:  ['⛅',  'Partly cloudy'],
+  3:  ['☁️',  'Overcast'],
+  45: ['🌫️', 'Fog'],
+  48: ['🌫️', 'Icy fog'],
+  51: ['🌦️', 'Light drizzle'],
+  53: ['🌦️', 'Drizzle'],
+  55: ['🌧️', 'Heavy drizzle'],
+  61: ['🌧️', 'Light rain'],
+  63: ['🌧️', 'Moderate rain'],
+  65: ['🌧️', 'Heavy rain'],
+  71: ['🌨️', 'Light snow'],
+  73: ['❄️',  'Moderate snow'],
+  75: ['❄️',  'Heavy snow'],
+  80: ['🌦️', 'Showers'],
+  81: ['🌧️', 'Mod. showers'],
+  82: ['⛈️',  'Heavy showers'],
+  95: ['⛈️',  'Thunderstorm'],
+  96: ['⛈️',  'T-storm + hail'],
+  99: ['⛈️',  'Heavy T-storm'],
+};
+
+function wmoLookup(code) {
+  if (WMO_MAP[code]) return WMO_MAP[code];
+  const best = Math.max(...Object.keys(WMO_MAP).map(Number).filter(k => k <= code));
+  return WMO_MAP[best] ?? ['🌡️', 'Unknown'];
+}
+
+function dayLabel(dateStr, i) {
+  if (i === 0) return 'Today';
+  if (i === 1) return 'Tomorrow';
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+}
+
+async function loadWeather() {
+  const grid = document.getElementById('forecastGrid');
+  try {
+    const r = await fetch('/weather');
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+
+    grid.innerHTML = '';
+    const d = data.daily;
+    for (let i = 0; i < 4; i++) {
+      const [icon, desc] = wmoLookup(d.weather_code[i]);
+      const hi  = Math.round(d.temperature_2m_max[i]);
+      const lo  = Math.round(d.temperature_2m_min[i]);
+      const pop = d.precipitation_probability_max?.[i];
+
+      const card = document.createElement('div');
+      card.className = 'fc-card';
+      card.innerHTML = `
+        <div class="fc-day">${dayLabel(d.time[i], i)}</div>
+        <div class="fc-icon">${icon}</div>
+        <div class="fc-desc">${desc}</div>
+        <div class="fc-temps">
+          <span class="fc-hi">${hi}°</span>
+          <span class="fc-lo">${lo}°</span>
+        </div>
+        ${pop != null ? `<div class="fc-pop">💧 ${pop}%</div>` : ''}
+      `;
+      grid.appendChild(card);
+    }
+  } catch {
+    grid.innerHTML = `<div class="forecast-msg">Weather unavailable.<br><small>Set WEATHER_LAT &amp; WEATHER_LON in .env</small></div>`;
+  }
+}
+loadWeather(); setInterval(loadWeather, 10 * 60 * 1000);
+
+function toggleFlashQueue() {
+  const body = document.getElementById('flashQueueBody');
+  const icon = document.getElementById('flashToggleIcon');
+  const show = body.style.display !== 'block';
+  body.style.display = show ? 'block' : 'none';
+  icon.textContent = show ? '▾' : '▸';
+  if (show) refreshFlashJobs();
+}
+
+async function refreshFlashJobs() {
+  try {
+    const r = await fetch('/flash/jobs');
+    if (!r.ok) return;
+    const jobs = await r.json();
+    const list = document.getElementById('flashList');
+    const pending = jobs.filter(j => j.status === 'pending_review').length;
+    document.getElementById('flashPendingCount').textContent = `${pending} pending`;
+
+    list.innerHTML = '';
+    if (jobs.length === 0) {
+      list.innerHTML = '<div class="flash-empty">No flash jobs.<br><small>Use DIVA to flash firmware or use the API.</small></div>';
+      return;
+    }
+    jobs.slice(0, 20).forEach(j => {
+      const statusLabel = j.status.replace('_', ' ');
+      const card = document.createElement('div');
+      card.className = `flash-card status-${j.status}`;
+      card.innerHTML = `
+        <div class="flash-card-header">
+          <span class="flash-device">${escapeHtml(j.device_name)}</span>
+          <span class="flash-status-badge ${j.status}">${statusLabel.toUpperCase()}</span>
+        </div>
+        <div class="flash-desc">${escapeHtml(j.description || '(no description)')}</div>
+        <div class="flash-source">source: ${j.source} · ${fmtTime(j.created_at)}</div>
+        ${j.firmware_code ? `<div class="flash-code-preview" id="code-${j.id}">${escapeHtml(j.firmware_code.substring(0, 500))}</div><span class="flash-toggle" onclick="document.getElementById('code-${j.id}').style.display=document.getElementById('code-${j.id}').style.display==='block'?'none':'block'">[show code]</span>` : ''}
+        ${j.error ? `<div class="flash-desc" style="color:var(--red)">error: ${escapeHtml(j.error)}</div>` : ''}
+        ${j.status === 'pending_review' ? `
+          <div class="flash-actions">
+            <button class="btn btn-approve" onclick="approveFlash('${j.id}')">✓ Approve & Flash</button>
+            <button class="btn btn-reject" onclick="rejectFlash('${j.id}')">✕ Reject</button>
+          </div>
+        ` : ''}
+      `;
+      list.appendChild(card);
+    });
+  } catch {}
+}
+refreshFlashJobs(); setInterval(refreshFlashJobs, 10_000);
+
+let _flashModalStep = 1;
+let _firmwareSource = 'code';
+
+function setFirmwareSource(src) {
+  _firmwareSource = src;
+  document.getElementById('srcCodeBtn').style.borderColor = src === 'code' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('srcCodeBtn').style.color = src === 'code' ? 'var(--accent)' : 'var(--text)';
+  document.getElementById('srcFileBtn').style.borderColor = src === 'file' ? 'var(--accent)' : 'var(--border)';
+  document.getElementById('srcFileBtn').style.color = src === 'file' ? 'var(--accent)' : 'var(--text)';
+  document.getElementById('firmwareCodeGroup').style.display = src === 'code' ? 'block' : 'none';
+  document.getElementById('firmwareFileGroup').style.display = src === 'file' ? 'block' : 'none';
+}
+
+function openFlashModal() {
+  _flashModalStep = 1;
+  document.getElementById('flashModalTitle').textContent = 'New Flash Job';
+  document.getElementById('flashFormStep').style.display = 'block';
+  document.getElementById('flashConfirmStep').style.display = 'none';
+  document.getElementById('flashModalNextBtn').style.display = '';
+  document.getElementById('flashModalConfirmBtn').style.display = 'none';
+  document.getElementById('flashModalBackBtn').style.display = 'none';
+
+  const sel = document.getElementById('flashDeviceSelect');
+  sel.innerHTML = '<option value="">Select a device…</option>';
+  fetch('/devices').then(r => r.json()).then(devs => {
+    devs.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.id;
+      o.textContent = `${d.name} (${d.id.substring(0,8)}…) ${d.online ? '●' : '○'} ${d.ip}`;
+      sel.appendChild(o);
+    });
+  }).catch(() => {
+    sel.innerHTML = '<option value="">No devices available</option>';
+  });
+
+  setFirmwareSource('code');
+  document.getElementById('flashFirmwareCode').value = '';
+  document.getElementById('flashDescription').value = '';
+  document.getElementById('flashModal').classList.add('show');
+}
+
+function closeFlashModal() {
+  document.getElementById('flashModal').classList.remove('show');
+}
+
+function flashModalNext() {
+  const devId = document.getElementById('flashDeviceSelect').value;
+  const desc = document.getElementById('flashDescription').value.trim() || '(no description)';
+  let code = '';
+
+  if (_firmwareSource === 'code') {
+    code = document.getElementById('flashFirmwareCode').value.trim();
+    if (!code) { alert('Please enter firmware code.'); return; }
+  } else {
+    const file = document.getElementById('flashFirmwareFile').files[0];
+    if (!file) { alert('Please select a firmware file.'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      code = e.target.result;
+      showConfirmation(devId, desc, code);
+    };
+    reader.readAsText(file);
+    return;
+  }
+
+  showConfirmation(devId, desc, code);
+}
+
+function showConfirmation(devId, desc, code) {
+  const devs = document.getElementById('flashDeviceSelect');
+  const devLabel = devs.options[devs.selectedIndex]?.text || devId;
+
+  document.getElementById('cfDevice').textContent = devLabel;
+  document.getElementById('cfDescription').textContent = desc;
+  document.getElementById('cfSource').textContent = _firmwareSource === 'code' ? 'Pasted code' : 'Uploaded file';
+
+  const preview = document.getElementById('cfCodePreview');
+  if (code.length > 2000) {
+    preview.textContent = code.substring(0, 2000) + '\n\n... (truncated, ' + code.length + ' bytes total)';
+  } else {
+    preview.textContent = code || '(empty)';
+  }
+
+  _flashModalStep = 2;
+  document.getElementById('flashModalTitle').textContent = 'Confirm Flash Job';
+  document.getElementById('flashFormStep').style.display = 'none';
+  document.getElementById('flashConfirmStep').style.display = 'block';
+  document.getElementById('flashModalNextBtn').style.display = 'none';
+  document.getElementById('flashModalConfirmBtn').style.display = '';
+  document.getElementById('flashModalBackBtn').style.display = '';
+}
+
+function flashModalBack() {
+  _flashModalStep = 1;
+  document.getElementById('flashModalTitle').textContent = 'New Flash Job';
+  document.getElementById('flashFormStep').style.display = 'block';
+  document.getElementById('flashConfirmStep').style.display = 'none';
+  document.getElementById('flashModalNextBtn').style.display = '';
+  document.getElementById('flashModalConfirmBtn').style.display = 'none';
+  document.getElementById('flashModalBackBtn').style.display = 'none';
+}
+
+async function flashModalConfirm() {
+  const devId = document.getElementById('flashDeviceSelect').value;
+  const desc = document.getElementById('flashDescription').value.trim() || '(no description)';
+  let code = '';
+
+  if (_firmwareSource === 'code') {
+    code = document.getElementById('flashFirmwareCode').value.trim();
+  } else {
+    const file = document.getElementById('flashFirmwareFile').files[0];
+    if (file) {
+      code = await file.text();
+    }
+  }
+
+  if (!devId || !code) { alert('Missing device or firmware.'); return; }
+
+  const btn = document.getElementById('flashModalConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+
+  try {
+    const r = await fetch('/flash/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: devId,
+        device_name: '',
+        description: desc,
+        firmware_code: code,
+      }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const job = await r.json();
+    pushEvent({ event: `flash:created:${job.id}`, ts: Date.now() / 1000 });
+    closeFlashModal();
+    document.getElementById('flashQueueBody').style.display = 'block';
+    document.getElementById('flashToggleIcon').textContent = '▾';
+    refreshFlashJobs();
+  } catch (e) {
+    alert('Failed to create flash job: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm & Create Job';
+  }
+}
+
+document.getElementById('flashModal').addEventListener('click', function(e) {
+  if (e.target === this) closeFlashModal();
+});
+
+async function approveFlash(jobId) {
+  try {
+    const r = await fetch(`/flash/jobs/${jobId}/approve`, { method: 'POST' });
+    const d = await r.json();
+    pushEvent({ event: `flash:approved:${jobId}`, ts: Date.now() / 1000 });
+    refreshFlashJobs();
+  } catch (e) {
+    alert('Approve failed: ' + e.message);
+  }
+}
+
+async function rejectFlash(jobId) {
+  try {
+    const r = await fetch(`/flash/jobs/${jobId}/reject`, { method: 'POST' });
+    pushEvent({ event: `flash:rejected:${jobId}`, ts: Date.now() / 1000 });
+    refreshFlashJobs();
+  } catch (e) {
+    alert('Reject failed: ' + e.message);
+  }
+}
+
+// ── Gitea webhook setup ──
+async function setupGiteaWebhook() {
+  const statusEl = document.getElementById('giteaWebhookStatus');
+  statusEl.textContent = 'Setting up…';
+  try {
+    const r = await fetch('/gitea/webhook/setup', { method: 'POST' });
+    const data = await r.json();
+    const ok = data.results ? data.results.filter(x => x.status === 'created' || x.status === 'already_exists').length : 0;
+    const fail = data.results ? data.results.filter(x => x.status === 'failed').length : 0;
+    statusEl.textContent = `${ok} hooks ok${fail ? `, ${fail} failed` : ''}`;
+    if (fail > 0) statusEl.style.color = 'var(--red)';
+    else statusEl.style.color = 'var(--green)';
+    setTimeout(() => { statusEl.textContent = ''; }, 5000);
+  } catch (e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+// Update log SSE URL to use /stream endpoint
+const _origStartLogStream = startLogStream;
+startLogStream = function(devId, el) {
+  if (_logStreamControllers[devId]) return;
+  try {
+    const es = new EventSource(`/logs/${devId}/stream`);
+    _logStreamControllers[devId] = es;
+    es.onmessage = function(e) {
+      try {
+        const data = JSON.parse(e.data);
+        const line = document.createElement('div');
+        line.textContent = `${new Date(data.ts * 1000).toLocaleTimeString()} [${data.level}] ${data.message}`;
+        el.appendChild(line);
+        el.scrollTop = el.scrollHeight;
+        while (el.children.length > 50) el.removeChild(el.firstChild);
+      } catch {}
+    };
+    es.onerror = function() {
+      delete _logStreamControllers[devId];
+      es.close();
+    };
+  } catch {}
+};
+
+const _origPushEvent = pushEvent;
+pushEvent = function(data) {
+  _origPushEvent(data);
+  if (data.event.startsWith('flash:')) {
+    refreshFlashJobs();
+  }
+};
+</script>
+</body>
+</html>

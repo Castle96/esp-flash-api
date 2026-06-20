@@ -1,0 +1,7 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+numpy>=1.24.0,<2
+openwakeword>=0.6.0
+tflite-runtime>=2.14.0
