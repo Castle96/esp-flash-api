@@ -1,13 +1,24 @@
 import asyncio
 import json
+import sys
+import time as time_module
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from loguru import logger
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-from .config import GITEA_ADMIN_PASS, GITEA_ADMIN_USER, GITEA_ENABLED, GITEA_TOKEN, GITEA_URL, OLLAMA_MODEL, PIPER_VOICE, TTS_ENGINE, WAKEWORD_ENABLED, WAKEWORD_HOST, WEATHER_LAT, WEATHER_LON, WHISPER_MODEL
+from .config import CORS_ORIGINS, ENV, GITEA_ADMIN_PASS, GITEA_ADMIN_USER, GITEA_ENABLED, GITEA_TOKEN, GITEA_URL, GITEA_WEBHOOK_SECRET, OLLAMA_HOST, OLLAMA_MODEL, PIPER_VOICE, STT_HOST, TTS_ENGINE, TTS_HOST, WAKEWORD_ENABLED, WAKEWORD_HOST, WEATHER_LAT, WEATHER_LON, WHISPER_MODEL
+
+logger.remove()
+logger.add(sys.stderr, level="INFO" if ENV != "production" else "WARNING")
+logger.add("logs/diva.log", rotation="10 MB", retention="7 days", level="INFO")
 from .llm import chat_once
 from .models import (
     ChatRequest,
@@ -46,20 +57,59 @@ from .state import (
 )
 from .tools import get_pending_reminder
 from .tts import synthesize_wav
+from .auth import AuthMiddleware, create_session_token, verify_request
+from . import db
 
 _FALLBACK_STT = "I'm sorry, I couldn't understand that audio. Please try again."
 _FALLBACK_LLM = "I apologize, I'm having trouble thinking right now. Could you try rephrasing?"
 _FALLBACK_EMPTY = "I didn't catch anything. Please hold the button and speak clearly."
 
-app = FastAPI(title="DIVA API", version="2.1.0")
+_weather_cache: dict | None = None
+_weather_cache_ts: float = 0.0
+_weather_cache_ttl = 120
+
+REQUEST_COUNT = Counter("diva_requests_total", "Total requests", ["method", "endpoint"])
+VOICE_COUNT = Counter("diva_voice_total", "Voice pipeline calls", ["stage", "status"])
+LATENCY = Histogram("diva_latency_seconds", "Request latency", ["endpoint"], buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0])
+
+app = FastAPI(title="DIVA API", version="2.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthMiddleware)
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100/minute"],
+    enabled=ENV == "production",
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def monitor_requests(request: Request, call_next):
+    start = time_module.time()
+    response = await call_next(request)
+    elapsed = time_module.time() - start
+
+    path = request.url.path
+    REQUEST_COUNT.labels(method=request.method, endpoint=path).inc()
+    LATENCY.labels(endpoint=path).observe(elapsed)
+
+    if elapsed > 1.0:
+        logger.warning(f"{request.method} {path} took {elapsed:.2f}s")
+    return response
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 _gitea_token = GITEA_TOKEN or ""
@@ -220,7 +270,7 @@ async def stream_device_logs(device_id: str, request: Request):
 
 @app.get("/conversation", response_model=list[ConversationEntry])
 async def get_conversation():
-    return [ConversationEntry(**e) for e in state.conversation]
+    return [ConversationEntry(**e) for e in db.get_conversation()]
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +279,10 @@ async def get_conversation():
 
 @app.get("/weather", include_in_schema=False)
 async def weather():
+    global _weather_cache, _weather_cache_ts
+    now = time_module.time()
+    if _weather_cache and (now - _weather_cache_ts) < _weather_cache_ttl:
+        return _weather_cache
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             resp = await client.get(
@@ -242,28 +296,114 @@ async def weather():
                 },
             )
             resp.raise_for_status()
-            return resp.json()
+            _weather_cache = resp.json()
+            _weather_cache_ts = now
+            return _weather_cache
         except Exception as exc:
+            if _weather_cache:
+                return _weather_cache
             raise HTTPException(status_code=502, detail=f"Weather fetch failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
-# Health
+# Auth
 # ---------------------------------------------------------------------------
 
+@app.post("/login")
+@limiter.limit("10/minute")
+async def login(request: Request):
+    body = await request.json()
+    username = body.get("username", "")
+    password = body.get("password", "")
+    if username != GITEA_ADMIN_USER or password != GITEA_ADMIN_PASS:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token, expires_in = create_session_token(username)
+    return {"token": token, "expires_in": expires_in, "token_type": "Bearer"}
+
+
+@app.get("/auth/keys")
+async def list_auth_keys(request: Request):
+    if request.state.auth.get("role") not in ("admin",):
+        raise HTTPException(status_code=403, detail="Admin only")
+    return db.list_api_keys()
+
+
+@app.post("/auth/keys")
+@limiter.limit("10/minute")
+async def create_auth_key(request: Request):
+    if request.state.auth.get("role") not in ("admin",):
+        raise HTTPException(status_code=403, detail="Admin only")
+    body = await request.json()
+    name = body.get("name", "unnamed")
+    role = body.get("role", "admin")
+    key = db.create_api_key(name, role)
+    return {"key": key, "name": name, "role": role, "warning": "Save this key - it won't be shown again"}
+
+
+@app.delete("/auth/keys/{key_id}")
+async def delete_auth_key(key_id: int, request: Request):
+    if request.state.auth.get("role") not in ("admin",):
+        raise HTTPException(status_code=403, detail="Admin only")
+    if db.delete_api_key(key_id):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="Key not found")
+
+
+# ---------------------------------------------------------------------------
+# Health (with dependency probing)
+# ---------------------------------------------------------------------------
+
+async def _probe_service(url: str, timeout: float = 5.0) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            resp = await c.get(f"{url}/health")
+            if resp.is_success:
+                return {"status": "ok"}
+            return {"status": "error", "detail": f"HTTP {resp.status_code}"}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+
+
 @app.get("/health", response_model=HealthResponse)
-async def health():
-    pending = sum(1 for j in state.flash_jobs.values() if j["status"] == FLASH_PENDING)
-    return HealthResponse(
+async def health(deps: bool = False):
+    pending = 0
+    for j in db.get_flash_jobs():
+        if j["status"] == FLASH_PENDING:
+            pending += 1
+    devices = db.get_all_devices()
+
+    result = HealthResponse(
         status="ok",
         model=OLLAMA_MODEL,
         whisper=WHISPER_MODEL,
         tts=f"{TTS_ENGINE}:{PIPER_VOICE}",
-        devices=len(state.devices),
+        devices=len(devices),
         flash_jobs_pending=pending,
         wakeword=WAKEWORD_ENABLED,
         gitea_url=GITEA_URL if GITEA_ENABLED else None,
     )
+
+    if deps:
+        deps_status = {
+            "ollama": await _probe_service(OLLAMA_HOST.replace("/api/chat", "")),
+            "stt": await _probe_service(STT_HOST),
+            "tts": await _probe_service(TTS_HOST),
+        }
+        if WAKEWORD_ENABLED:
+            deps_status["wakeword"] = await _probe_service(WAKEWORD_HOST)
+        if GITEA_ENABLED:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as c:
+                    resp = await c.get(f"{GITEA_URL}/api/v1/version")
+                    deps_status["gitea"] = {"status": "ok" if resp.is_success else "error"}
+            except Exception as exc:
+                deps_status["gitea"] = {"status": "error", "detail": str(exc)}
+        result.dependencies = deps_status
+        all_ok = all(d["status"] == "ok" for d in deps_status.values())
+        if not all_ok:
+            result.status = "degraded"
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +411,8 @@ async def health():
 # ---------------------------------------------------------------------------
 
 @app.post("/flash/jobs", response_model=FlashJobInfo)
-async def create_flash(req: FlashJobCreateRequest):
+@limiter.limit("10/minute")
+async def create_flash(request: Request, req: FlashJobCreateRequest):
     dev = state.devices.get(req.device_id)
     if not dev:
         raise HTTPException(status_code=404, detail=f"Device {req.device_id} not found")
@@ -314,7 +455,8 @@ async def _dispatch_ota(job: dict) -> str:
 
 
 @app.post("/flash/jobs/{job_id}/approve")
-async def approve_flash(job_id: str):
+@limiter.limit("10/minute")
+async def approve_flash(request: Request, job_id: str):
     job = state.flash_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Flash job not found")
@@ -336,7 +478,8 @@ async def approve_flash(job_id: str):
 
 
 @app.post("/flash/jobs/{job_id}/reject")
-async def reject_flash(job_id: str):
+@limiter.limit("10/minute")
+async def reject_flash(request: Request, job_id: str):
     job = state.flash_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Flash job not found")
@@ -348,7 +491,8 @@ async def reject_flash(job_id: str):
 
 
 @app.post("/flash/jobs/{job_id}/cancel")
-async def cancel_flash(job_id: str):
+@limiter.limit("10/minute")
+async def cancel_flash(request: Request, job_id: str):
     job = state.flash_jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Flash job not found")
@@ -364,7 +508,8 @@ async def cancel_flash(job_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/fleet/action")
-async def fleet_action(req: FleetActionRequest):
+@limiter.limit("10/minute")
+async def fleet_action(request: Request, req: FleetActionRequest):
     if req.action == "reboot":
         return await _fleet_reboot(req.device_ids)
     elif req.action == "flash_approve":
@@ -478,7 +623,8 @@ async def wakeword_detect(file: UploadFile = File(...)):
 
 
 @app.post("/wakeword/train/{name}")
-async def train_wakeword(name: str, file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+async def train_wakeword(request: Request, name: str, file: UploadFile = File(...)):
     if not WAKEWORD_ENABLED:
         raise HTTPException(status_code=400, detail="Wake word detection is disabled")
     audio_bytes = await file.read()
@@ -509,7 +655,8 @@ async def delete_custom_wakeword(name: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/voice")
-async def voice(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def voice(request: Request, file: UploadFile = File(...)):
     audio_bytes = await file.read()
     mark_event("voice:recv")
 
@@ -581,7 +728,8 @@ async def voice(file: UploadFile = File(...)):
 # ---------------------------------------------------------------------------
 
 @app.post("/transcribe", response_model=TranscribeResponse)
-async def transcribe(file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+async def transcribe(request: Request, file: UploadFile = File(...)):
     try:
         audio_bytes = await file.read()
         loop = asyncio.get_running_loop()
@@ -592,28 +740,30 @@ async def transcribe(file: UploadFile = File(...)):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+@limiter.limit("20/minute")
+async def chat(request: Request, body: ChatRequest):
     try:
         loop = asyncio.get_running_loop()
-        reply = await loop.run_in_executor(None, chat_once, request.text, state.history)
+        reply = await loop.run_in_executor(None, chat_once, body.text, state.history)
         state.history.extend([
-            {"role": "user", "content": request.text},
+            {"role": "user", "content": body.text},
             {"role": "assistant", "content": reply},
         ])
         if len(state.history) > 20:
             state.history = state.history[-20:]
-        add_conversation_entry("user", request.text)
+        add_conversation_entry("user", body.text)
         add_conversation_entry("assistant", reply)
-        return ChatResponse(reply=reply, session_id=request.session_id)
+        return ChatResponse(reply=reply, session_id=body.session_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/speak")
-async def speak(request: ChatRequest):
+@limiter.limit("30/minute")
+async def speak(request: Request, body: ChatRequest):
     try:
         loop = asyncio.get_running_loop()
-        wav_bytes = await loop.run_in_executor(None, synthesize_wav, request.text)
+        wav_bytes = await loop.run_in_executor(None, synthesize_wav, body.text)
         return Response(content=wav_bytes, media_type="audio/wav")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -677,19 +827,18 @@ async def gitea_repos():
 
 @app.post("/gitea/webhook")
 async def gitea_webhook(request: Request):
-    """
-    Receives Gitea push webhooks. Extracts the repo name, finds a matching
-    device, and creates a flash job with the pushed code.
-
-    Gitea push event payload shape:
-      { "ref": "refs/heads/main",
-        "repository": { "full_name": "admin/esp32-sensor-node" },
-        "commits": [ { "message": "fix led", "added": [...], "modified": [...] } ] }
-    """
     if not GITEA_ENABLED:
         raise HTTPException(400, "Gitea integration disabled")
 
-    body = await request.json()
+    signature = request.headers.get("X-Gitea-Signature", "")
+    body_bytes = await request.body()
+    if GITEA_WEBHOOK_SECRET and signature:
+        import hashlib, hmac
+        expected = hmac.new(GITEA_WEBHOOK_SECRET.encode(), body_bytes, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            raise HTTPException(401, "Invalid webhook signature")
+    body = json.loads(body_bytes)
+
     event = request.headers.get("X-Gitea-Event", "push")
 
     if event == "push":
@@ -827,7 +976,7 @@ async def gitea_setup_webhook(request: Request):
                     "config": {
                         "url": hook_url,
                         "content_type": "json",
-                        "secret": "",
+                        "secret": GITEA_WEBHOOK_SECRET,
                     },
                     "events": ["push", "workflow_run"],
                     "active": True,
@@ -854,5 +1003,5 @@ async def gitea_setup_webhook(request: Request):
 @app.delete("/history")
 async def clear_history():
     state.history.clear()
-    state.conversation.clear()
+    db.clear_conversation()
     return {"ok": True}

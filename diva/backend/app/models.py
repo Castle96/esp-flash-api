@@ -25,6 +25,7 @@ class HealthResponse(BaseModel):
     flash_jobs_pending: int
     wakeword: bool = False
     gitea_url: str | None = None
+    dependencies: dict[str, dict] | None = None
 
 
 class DeviceHeartbeatRequest(BaseModel):
