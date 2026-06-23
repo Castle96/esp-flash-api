@@ -1,7 +1,15 @@
 __pycache__/
 *.pyc
 .env
+.env.local
 diva.db
 logs/
 */diva.db
 */logs/
+*.egg-info/
+.pytest_cache/
+.python-version
+.venv/
+venv/
+dist/
+build/

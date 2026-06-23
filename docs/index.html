@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DIVA — Device Integrated Voice Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+  :root {
+    --base: #1e1e2e; --mantle: #181825; --crust: #11111b;
+    --text: #cdd6f4; --subtext0: #a6adc8; --overlay0: #6c7086;
+    --surface0: #313244; --surface1: #45475a;
+    --blue: #89b4fa; --lavender: #b4befe; --green: #a6e3a1;
+    --peach: #fab387; --maroon: #eba0ac; --red: #f38ba8;
+    --teal: #94e2d5; --yellow: #f9e2af;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--base); color: var(--text); line-height: 1.6;
+  }
+  nav {
+    position: fixed; top: 0; width: 100%; z-index: 100;
+    background: var(--crust); border-bottom: 1px solid var(--surface0);
+    padding: 0.75rem 2rem; display: flex; align-items: center; gap: 2rem;
+  }
+  nav .logo { font-weight: 800; font-size: 1.25rem; color: var(--blue); }
+  nav a { color: var(--subtext0); text-decoration: none; font-size: 0.9rem; }
+  nav a:hover { color: var(--text); }
+  .hero {
+    margin-top: 4rem; padding: 4rem 2rem 3rem; text-align: center;
+    background: linear-gradient(135deg, var(--crust) 0%, var(--mantle) 100%);
+    border-bottom: 1px solid var(--surface0);
+  }
+  .hero h1 { font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, var(--blue), var(--lavender)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero .tagline { font-size: 1.2rem; color: var(--subtext0); margin: 1rem 0 2rem; max-width: 640px; margin-inline: auto; }
+  .hero .badges { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-bottom: 2rem; }
+  .hero .badges img { height: 22px; }
+  .btn { display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem; margin: 0.3rem; }
+  .btn-primary { background: var(--blue); color: var(--crust); }
+  .btn-secondary { background: var(--surface0); color: var(--text); border: 1px solid var(--surface1); }
+  .btn-primary:hover { background: var(--lavender); }
+  .btn-secondary:hover { background: var(--surface1); }
+  section { max-width: 960px; margin: 0 auto; padding: 3rem 2rem; }
+  section h2 { font-size: 1.5rem; font-weight: 700; color: var(--blue); margin-bottom: 1rem; }
+  section h3 { font-size: 1.1rem; font-weight: 600; color: var(--teal); margin: 1.5rem 0 0.5rem; }
+  section p { color: var(--subtext0); margin-bottom: 1rem; }
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .feature-card {
+    background: var(--mantle); border: 1px solid var(--surface0); border-radius: 12px;
+    padding: 1.25rem; transition: border-color 0.2s;
+  }
+  .feature-card:hover { border-color: var(--surface1); }
+  .feature-card .icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .feature-card h4 { font-size: 1rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .feature-card p { font-size: 0.85rem; color: var(--overlay0); }
+  .pipeline { background: var(--mantle); border-radius: 12px; padding: 1.5rem; text-align: center; margin: 1.5rem 0; }
+  .pipeline-steps { display: flex; align-items: center; justify-content: center; gap: 0.75rem; flex-wrap: wrap; font-size: 0.85rem; }
+  .step { background: var(--surface0); padding: 0.5rem 1rem; border-radius: 6px; color: var(--subtext0); }
+  .step.active { background: var(--blue); color: var(--crust); font-weight: 600; }
+  .arrow { color: var(--overlay0); font-weight: 600; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; background: var(--crust); padding: 0.15rem 0.4rem; border-radius: 4px; color: var(--peach); }
+  pre { background: var(--crust); border: 1px solid var(--surface0); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th { text-align: left; padding: 0.5rem; color: var(--subtext0); font-weight: 600; border-bottom: 1px solid var(--surface0); }
+  td { padding: 0.5rem; border-bottom: 1px solid var(--surface0); font-size: 0.9rem; }
+  footer { text-align: center; padding: 2rem; color: var(--overlay0); font-size: 0.85rem; border-top: 1px solid var(--surface0); }
+  @media (max-width: 640px) { .hero h1 { font-size: 2rem; } section { padding: 2rem 1rem; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="logo">DIVA</span>
+  <a href="#features">Features</a>
+  <a href="#quickstart">Quick Start</a>
+  <a href="#architecture">Architecture</a>
+  <a href="#api">API</a>
+</nav>
+
+<div class="hero">
+  <div class="badges">
+    <img src="https://img.shields.io/badge/python-3.11-blue?style=flat-square" alt="Python">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License">
+    <img src="https://img.shields.io/badge/ESP32-C3-orange?style=flat-square" alt="ESP32">
+    <img src="https://img.shields.io/badge/voice-gemma4-purple?style=flat-square" alt="Voice">
+  </div>
+  <h1>Device Integrated Voice Agent</h1>
+  <p class="tagline">
+    A local AI voice assistant for ESP32 fleet management.<br>
+    Voice-controlled OTA firmware flashing. Zero cloud.
+  </p>
+  <div>
+    <a class="btn btn-primary" href="https://github.com/Castle96/esp-flash-api">GitHub</a>
+    <a class="btn btn-secondary" href="#quickstart">Get Started</a>
+  </div>
+</div>
+
+<section id="features">
+  <h2>Features</h2>
+  <div class="pipeline">
+    <div class="pipeline-steps">
+      <span class="step active">🎤 Wake</span><span class="arrow">→</span>
+      <span class="step">📡 ESP32</span><span class="arrow">→</span>
+      <span class="step">📝 STT</span><span class="arrow">→</span>
+      <span class="step">🧠 LLM</span><span class="arrow">→</span>
+      <span class="step">🔊 TTS</span><span class="arrow">→</span>
+      <span class="step active">🔁 Reply</span>
+    </div>
+  </div>
+  <div class="feature-grid">
+    <div class="feature-card"><div class="icon">🎤</div><h4>Voice Control</h4><p>Push-to-talk from ESP32-C3 with INMP441 mic and I2S speaker. Full STT → LLM → TTS pipeline.</p></div>
+    <div class="feature-card"><div class="icon">⚡</div><h4>OTA Flashing</h4><p>LLM generates MicroPython firmware. Human-in-the-loop approval. Wireless OTA push to fleet.</p></div>
+    <div class="feature-card"><div class="icon">📊</div><h4>Dashboard</h4><p>Catppuccin Mocha SPA — real-time pipeline viz, device fleet, flash queue, conversation log, weather.</p></div>
+    <div class="feature-card"><div class="icon">🔧</div><h4>Tool Calling</h4><p>LLM can list devices, flash firmware, set reminders, and check system status via structured tools.</p></div>
+    <div class="feature-card"><div class="icon">🔄</div><h4>CI/CD Integration</h4><p>Gitea webhooks auto-create flash jobs on firmware push. Build status on device cards.</p></div>
+    <div class="feature-card"><div class="icon">🔐</div><h4>No Cloud</h4><p>faster-whisper, Kokoro, Ollama, openWakeWord — all on your hardware. No API keys, no subscriptions.</p></div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <h2>Quick Start</h2>
+  <pre><code>git clone http://100.120.207.67:30529/Castle96/esp-flash-api.git
+cd esp-flash-api/diva
+
+# Configure
+cp backend/.env.example backend/.env
+# Edit backend/.env with your machine IPs
+
+# Run tests (no hardware)
+make test
+
+# Deploy
+make up-all
+make smoke</code></pre>
+</section>
+
+<section id="architecture">
+  <h2>Architecture</h2>
+  <table>
+    <tr><th>Machine</th><th>Role</th><th>Specs</th><th>Services</th></tr>
+    <tr><td><code>arceus</code></td><td>DIVA Gateway</td><td>Pi 5, 8GB</td><td>FastAPI :8000, SQLite, Dashboard</td></tr>
+    <tr><td><code>stargame</code></td><td>Inference Node</td><td>x86_64, 62GB</td><td>STT :8001, TTS :8002, WW :8003, Ollama :11434</td></tr>
+    <tr><td><code>stargame</code></td><td>Code Hosting</td><td>(same)</td><td>Gitea :30529, CI Actions</td></tr>
+  </table>
+  <p>See <a href="architecture.md" style="color:var(--blue)">architecture.md</a> for full Mermaid diagrams, or browse the dashboard at <code>http://100.85.238.85:8000</code>.</p>
+</section>
+
+<section id="api">
+  <h2>API</h2>
+  <table>
+    <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    <tr><td><code>GET</code></td><td><code>/health</code></td><td>Gateway status</td></tr>
+    <tr><td><code>POST</code></td><td><code>/voice</code></td><td>Audio in → WAV reply (full pipeline)</td></tr>
+    <tr><td><code>POST</code></td><td><code>/transcribe</code></td><td>Audio → text</td></tr>
+    <tr><td><code>POST</code></td><td><code>/chat</code></td><td>Text → LLM reply</td></tr>
+    <tr><td><code>POST</code></td><td><code>/speak</code></td><td>Text → WAV audio</td></tr>
+    <tr><td><code>POST</code></td><td><code>/flash/jobs</code></td><td>Create flash job</td></tr>
+    <tr><td><code>GET</code></td><td><code>/devices</code></td><td>Device list</td></tr>
+  </table>
+  <p>Full reference at <a href="api.md" style="color:var(--blue)">docs/api.md</a> or Swagger UI at <code>/docs</code>.</p>
+</section>
+
+<footer>
+  DIVA — Device Integrated Voice Agent. Built with FastAPI, faster-whisper, Kokoro, Ollama, openWakeWord.
+</footer>
+
+</body>
+</html>
