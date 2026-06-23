@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diva-stt
+  namespace: diva
+  labels:
+    app: diva-stt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diva-stt
+  template:
+    metadata:
+      labels:
+        app: diva-stt
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: stt
+          image: 100.120.207.67:30529/castle96/diva-stt:latest
+          ports:
+            - containerPort: 8001
+              name: http
+          env:
+            - name: WHISPER_MODEL
+              value: Systran/faster-whisper-medium
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            limits:
+              cpu: "4"
+              memory: 4Gi
+            requests:
+              cpu: "2"
+              memory: 2Gi

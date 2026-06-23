@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diva-wakeword
+  namespace: diva
+  labels:
+    app: diva-wakeword
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diva-wakeword
+  template:
+    metadata:
+      labels:
+        app: diva-wakeword
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: wakeword
+          image: 100.120.207.67:30529/castle96/diva-wakeword:latest
+          ports:
+            - containerPort: 8003
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 256Mi

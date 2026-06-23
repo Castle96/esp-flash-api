@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+  - stt/deployment.yaml
+  - stt/service.yaml
+  - tts/deployment.yaml
+  - tts/service.yaml
+  - wakeword/deployment.yaml
+  - wakeword/service.yaml

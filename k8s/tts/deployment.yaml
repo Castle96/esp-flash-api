@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diva-tts
+  namespace: diva
+  labels:
+    app: diva-tts
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diva-tts
+  template:
+    metadata:
+      labels:
+        app: diva-tts
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: tts
+          image: 100.120.207.67:30529/castle96/diva-tts:latest
+          ports:
+            - containerPort: 8002
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi

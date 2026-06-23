@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diva-backend
+  namespace: diva
+  labels:
+    app: diva-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: diva-backend
+  template:
+    metadata:
+      labels:
+        app: diva-backend
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets:
+        - name: regcred
+      containers:
+        - name: backend
+          image: 100.120.207.67:30529/castle96/diva-backend:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: OLLAMA_HOST
+              value: http://100.120.207.67:11434
+            - name: OLLAMA_MODEL
+              value: gemma4:e4b
+            - name: STT_HOST
+              value: http://diva-stt.diva.svc:8001
+            - name: WHISPER_MODEL
+              value: Systran/faster-whisper-medium
+            - name: TTS_HOST
+              value: http://diva-tts.diva.svc:8002
+            - name: TTS_ENGINE
+              value: kokoro
+            - name: KOKORO_VOICE
+              value: bm_george
+            - name: WAKEWORD_HOST
+              value: http://diva-wakeword.diva.svc:8003
+            - name: WAKEWORD_ENABLED
+              value: "true"
+            - name: FUNCTION_CALLING_ENABLED
+              value: "true"
+            - name: GITEA_URL
+              value: http://100.120.207.67:30529
+            - name: GITEA_ENABLED
+              value: "true"
+            - name: GITEA_ADMIN_USER
+              value: admin
+            - name: GITEA_ADMIN_PASS
+              value: admin123!
+            - name: BACKEND_HOST
+              value: 0.0.0.0
+            - name: BACKEND_PORT
+              value: "8000"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 256Mi
